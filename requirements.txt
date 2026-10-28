@@ -6,6 +6,7 @@ python-multipart
 python-dotenv
 yt-dlp
 faster-whisper
+av>=13,<14  # faster-whisper 1.2.x passes metadata_errors to av.open; removed in av 14
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
