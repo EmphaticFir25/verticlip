@@ -1,16 +1,16 @@
 services:
   verticlip:
-    build: .
+    build: https://github.com/EmphaticFir25/verticlip.git
     image: verticlip:latest
     restart: unless-stopped
     ports:
       - "33214:33214"
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      # Container path to the font installed by the Dockerfile.
       FONT_PATH: /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+      GOOGLE_CLIENT_SECRETS: /app/data/client_secret.json
     volumes:
       - ./data:/app/data
-      - ./client_secret.json:/app/client_secret.json:ro
       - ./data/hf-cache:/root/.cache/huggingface
