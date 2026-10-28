@@ -14,7 +14,7 @@ These are served from `docs/` through GitHub Pages.
 1. Install Python 3.10+ (check "Add to PATH") and ffmpeg (`ffmpeg -version` must work in a new terminal).
 2. Start LM Studio's local server with a chat model loaded.
 3. Double-click `run.bat`. On first run it creates `.env` from `.env.example`. Fill in your keys, then run it again.
-4. The app opens at http://localhost:8000. Paste a video URL and click **Find clips**.
+4. The app opens at http://localhost:33214. Paste a video URL and click **Find clips**.
 
 Nothing publishes automatically. Uploads start only when you select clips and click **Publish to all connected accounts**.
 
@@ -33,7 +33,7 @@ YOUTUBE_API_KEY=...
 GOOGLE_CLIENT_SECRETS=client_secret.json
 TIKTOK_CLIENT_KEY=...
 TIKTOK_CLIENT_SECRET=...
-PUBLIC_BASE=http://localhost:8000
+PUBLIC_BASE=http://localhost:33214
 LMSTUDIO_URL=http://localhost:1234/v1
 LMSTUDIO_MODEL=your-model-name
 WHISPER_MODEL=small
@@ -47,10 +47,10 @@ FONT_PATH=
 Run:
 
 ```bash
-uvicorn server:app --host 127.0.0.1 --port 8000
+uvicorn server:app --host 127.0.0.1 --port 33214
 ```
 
-Open http://localhost:8000.
+Open http://localhost:33214.
 
 ## Tests
 
@@ -101,8 +101,8 @@ The stderr tail in the job message names the cause.
 
 ### OAuth redirect mismatch (`redirect_uri_mismatch` or "Unknown OAuth state")
 
-- **Google (YouTube):** in Google Cloud Console, add this exact Authorized redirect URI to your OAuth client: `http://localhost:8000/auth/youtube/callback`. It must match `PUBLIC_BASE` in `.env` plus `/auth/youtube/callback`, character for character.
-- **TikTok:** register `http://localhost:8000/auth/tiktok/callback` on your TikTok app.
+- **Google (YouTube):** in Google Cloud Console, add this exact Authorized redirect URI to your OAuth client: `http://localhost:33214/auth/youtube/callback`. It must match `PUBLIC_BASE` in `.env` plus `/auth/youtube/callback`, character for character.
+- **TikTok:** register `http://localhost:33214/auth/tiktok/callback` on your TikTok app.
 - Open the app at the same host as `PUBLIC_BASE`. Use `localhost` in both places, not `127.0.0.1` in one and `localhost` in the other.
 - "Unknown OAuth state": the connect step was started in one server session and the callback arrived after a restart, or the page was reloaded. Click **Connect** again from the app.
 

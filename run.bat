@@ -15,9 +15,9 @@ if not exist .env (
     exit /b 0
 )
 
-echo Starting Verticlip at http://localhost:8000
-start "" cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:8000"
-uvicorn server:app --host 127.0.0.1 --port 8000
+echo Starting Verticlip at http://localhost:33214
+start "" cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:33214"
+uvicorn server:app --host 127.0.0.1 --port 33214
 goto :eof
 
 :fail

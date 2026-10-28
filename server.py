@@ -8,7 +8,7 @@ Pipeline per job:
   4. ffmpeg cuts each moment to 9:16, burns captions (ASS), overlays the logo and text watermark
   5. Clips are stored; /api/publish uploads selected clips to every connected account
 
-Run:  uvicorn server:app --reload --port 8000
+Run:  uvicorn server:app --reload --port 33214
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ YT_KEY = os.getenv("YOUTUBE_API_KEY", "")
 GOOGLE_CLIENT_SECRETS = os.getenv("GOOGLE_CLIENT_SECRETS", str(ROOT / "client_secret.json"))
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY", "")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")
-PUBLIC_BASE = os.getenv("PUBLIC_BASE", "http://localhost:8000")
+PUBLIC_BASE = os.getenv("PUBLIC_BASE", "http://localhost:33214")
 LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://localhost:1234/v1")
 LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "local-model")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
