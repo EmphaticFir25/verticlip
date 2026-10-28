@@ -124,19 +124,41 @@ def index():
 
 # ---------- trending ----------
 
+TRENDING_CHANNELS = ("Joe Bartolozzi", "Jynxi", "MrBeast")
+_channel_ids: dict[str, str] = {}  # channel name -> channelId, cached to save API quota
+YT_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+
+
+def _channel_id(c: httpx.Client, name: str) -> Optional[str]:
+    if name not in _channel_ids:
+        s = c.get(YT_SEARCH_URL, params={
+            "part": "snippet", "type": "channel", "q": name, "maxResults": 1, "key": YT_KEY,
+        }).json()
+        items = s.get("items", [])
+        if items:
+            _channel_ids[name] = items[0]["id"]["channelId"]
+    return _channel_ids.get(name)
+
+
 @app.get("/api/trending")
-def trending(region: str = "US", limit: int = 50):
-    """Most-viewed long-form Twitch VODs uploaded to YouTube in the last 7 days, via the YouTube Data API."""
+def trending(limit: int = 48):
+    """Most-viewed long-form uploads from TRENDING_CHANNELS in the last 7 days, via the YouTube Data API."""
     if not YT_KEY:
         raise HTTPException(500, "Set YOUTUBE_API_KEY to load trending videos.")
     published_after = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 7 * 86400))
+    per_channel = max(1, min(limit, 50) // len(TRENDING_CHANNELS))
     with httpx.Client(timeout=20) as c:
-        s = c.get("https://www.googleapis.com/youtube/v3/search", params={
-            "part": "snippet", "type": "video", "order": "viewCount", "q": "twitch vod",
-            "regionCode": region, "publishedAfter": published_after,
-            "videoDuration": "long", "maxResults": min(limit, 50), "key": YT_KEY,
-        }).json()
-        ids = [i["id"]["videoId"] for i in s.get("items", [])]
+        ids: list[str] = []
+        for name in TRENDING_CHANNELS:
+            cid = _channel_id(c, name)
+            if not cid:
+                continue
+            s = c.get(YT_SEARCH_URL, params={
+                "part": "snippet", "type": "video", "order": "viewCount", "channelId": cid,
+                "publishedAfter": published_after, "videoDuration": "long",
+                "maxResults": per_channel, "key": YT_KEY,
+            }).json()
+            ids += [i["id"]["videoId"] for i in s.get("items", [])]
         if not ids:
             return {"items": []}
         v = c.get("https://www.googleapis.com/youtube/v3/videos", params={
