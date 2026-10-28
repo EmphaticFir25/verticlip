@@ -3,6 +3,7 @@ uvicorn[standard]
 httpx
 pydantic
 python-multipart
+python-dotenv
 yt-dlp
 faster-whisper
 google-api-python-client

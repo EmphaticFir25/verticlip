@@ -28,6 +28,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 ROOT = Path(__file__).parent
+
+from dotenv import load_dotenv  # noqa: E402
+load_dotenv(ROOT / ".env")
 WEB = ROOT / "web"
 DATA = ROOT / "data"
 JOBS = DATA / "jobs"
@@ -168,8 +171,19 @@ def transcribe(video: Path) -> list[dict]:
     return words
 
 
+def parse_clips(content: str) -> list[dict]:
+    """Pull the JSON object out of a model reply and keep only well-formed clip entries."""
+    start, end = content.find("{"), content.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError("no JSON object in model reply")
+    data = json.loads(content[start:end + 1])
+    return [c for c in data.get("clips", [])
+            if isinstance(c, dict) and "start" in c and "end" in c]
+
+
 def score_windows(words: list[dict], clip_len: int, max_clips: int) -> list[dict]:
-    """Ask the local LM Studio model to find clippable moments in transcript windows."""
+    """Ask the local LM Studio model to find clippable moments in transcript windows.
+    Each window gets two attempts; a window that still returns invalid JSON is skipped."""
     if not words:
         return []
     window_s = 600  # 10-minute windows keep prompts small for local models
@@ -191,20 +205,20 @@ def score_windows(words: list[dict], clip_len: int, max_clips: int) -> list[dict
                     f'"title": "<short title>", "caption": "<3-7 words for on-screen caption>", '
                     f'"reason": "<one sentence>"}}]}}\n\nTRANSCRIPT:\n{text}'
                 )
-                r = c.post(f"{LMSTUDIO_URL}/chat/completions", json={
-                    "model": LMSTUDIO_MODEL,
-                    "messages": [
-                        {"role": "system", "content": "You are an expert short-form video editor. Output valid JSON only."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0.2,
-                })
-                content = r.json()["choices"][0]["message"]["content"]
-                content = content[content.find("{"): content.rfind("}") + 1]
-                try:
-                    candidates += json.loads(content).get("clips", [])
-                except json.JSONDecodeError:
-                    pass
+                messages = [
+                    {"role": "system", "content": "You are an expert short-form video editor. Output valid JSON only."},
+                    {"role": "user", "content": prompt},
+                ]
+                for attempt in range(2):
+                    r = c.post(f"{LMSTUDIO_URL}/chat/completions", json={
+                        "model": LMSTUDIO_MODEL, "messages": messages, "temperature": 0.2,
+                    })
+                    try:
+                        candidates += parse_clips(r.json()["choices"][0]["message"]["content"])
+                        break
+                    except (ValueError, KeyError, IndexError):
+                        if attempt == 1:
+                            print(f"Skipping window at {start:.0f}s: model returned invalid JSON twice")
             start = end
     # Keep best-scoring, non-overlapping moments, clamped to clip_len
     candidates.sort(key=lambda x: x.get("score", 0), reverse=True)

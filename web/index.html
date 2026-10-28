@@ -266,7 +266,7 @@
 
 <script>
 const $ = (s) => document.querySelector(s);
-const state = { region: "US", clips: [], selected: new Set(), logoUrl: null, currentUrl: null };
+const state = { region: "US", clips: [], selected: new Set(), logoUrl: null, currentUrl: null, accountCount: 0 };
 
 function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.style.display = "block";
@@ -391,7 +391,7 @@ function renderClips(clips) {
 
 function syncSelection() {
   const picks = [...document.querySelectorAll(".pick:checked")].map(p => Number(p.dataset.i));
-  $("#selCount").textContent = `${picks.length} clip${picks.length === 1 ? "" : "s"} selected · ${document.querySelectorAll("#ytList .on, #ttList .on").length} account(s) connected`;
+  $("#selCount").textContent = `${picks.length} clip${picks.length === 1 ? "" : "s"} selected · ${state.accountCount} account(s) connected`;
   state.selected = new Set(picks);
 }
 $("#clipGrid").addEventListener("change", (e) => { if (e.target.classList.contains("pick")) syncSelection(); });
@@ -420,6 +420,7 @@ async function loadAccounts() {
       : `<div class="status" style="margin-bottom:12px">No accounts connected yet.</div>`;
     $("#ytList").innerHTML = render(d.youtube, "YouTube Shorts");
     $("#ttList").innerHTML = render(d.tiktok, "TikTok");
+    state.accountCount = d.youtube.length + d.tiktok.length;
     document.querySelectorAll("#ytList .acct, #ttList .acct").forEach(el => el.classList.add("on"));
     syncSelection();
   } catch {}

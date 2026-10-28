@@ -9,7 +9,14 @@ Turn long videos into vertical Shorts. Verticlip finds the most clippable moment
 
 These are served from `docs/` through GitHub Pages.
 
-## Setup
+## Quick start (Windows)
+
+1. Install Python 3.10+ (check "Add to PATH") and ffmpeg (`ffmpeg -version` must work).
+2. Start LM Studio's local server with a chat model loaded.
+3. Double-click `run.bat`. On first run it creates `.env` from `.env.example`. Fill in your keys, then run it again.
+4. The app opens at http://localhost:8000.
+
+## Setup (manual)
 
 Requirements: Python 3.10+, ffmpeg on PATH, LM Studio running its local server (default `http://localhost:1234/v1`) with a chat model loaded.
 
