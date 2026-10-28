@@ -49,6 +49,7 @@ TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")
 PUBLIC_BASE = os.getenv("PUBLIC_BASE", "http://localhost:33214")
 LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://localhost:1234/v1")
 LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "local-model")
+LMSTUDIO_API_KEY = os.getenv("LMSTUDIO_API_KEY", "")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 YOUTUBE_PRIVACY = os.getenv("YOUTUBE_PRIVACY", "private").strip().lower()
 if YOUTUBE_PRIVACY not in ("private", "unlisted", "public"):
@@ -133,7 +134,7 @@ def trending(region: str = "US", limit: int = 50):
         s = c.get("https://www.googleapis.com/youtube/v3/search", params={
             "part": "snippet", "type": "video", "order": "viewCount",
             "regionCode": region, "publishedAfter": published_after,
-            "maxResults": min(limit, 50), "key": YT_KEY,
+            "videoDuration": "long", "maxResults": min(limit, 50), "key": YT_KEY,
         }).json()
         ids = [i["id"]["videoId"] for i in s.get("items", [])]
         if not ids:
@@ -257,7 +258,8 @@ def _chat(messages: list[dict]) -> str:
     try:
         r = httpx.post(f"{LMSTUDIO_URL}/chat/completions", json={
             "model": LMSTUDIO_MODEL, "messages": messages, "temperature": 0.2,
-        }, timeout=300)
+        }, headers={"Authorization": f"Bearer {LMSTUDIO_API_KEY}"} if LMSTUDIO_API_KEY else None,
+            timeout=300)
         r.raise_for_status()
     except httpx.HTTPError as exc:
         raise RuntimeError(
