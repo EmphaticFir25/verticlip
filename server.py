@@ -124,7 +124,7 @@ def index():
 
 # ---------- trending ----------
 
-TRENDING_CHANNELS = ("Joe Bartolozzi", "Jynxi", "MrBeast")
+TRENDING_CHANNELS = ("Joe Bartolozzi", "Jynxi", "MrBeast", "xQcOW", "Kai Cenat", "Ludwig", "IShowSpeed", "Adin Ross")
 _channel_ids: dict[str, str] = {}  # channel name -> channelId, cached to save API quota
 YT_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 
