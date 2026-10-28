@@ -126,13 +126,13 @@ def index():
 
 @app.get("/api/trending")
 def trending(region: str = "US", limit: int = 50):
-    """Most-viewed videos published in the last 7 days, via the YouTube Data API."""
+    """Most-viewed long-form Twitch VODs uploaded to YouTube in the last 7 days, via the YouTube Data API."""
     if not YT_KEY:
         raise HTTPException(500, "Set YOUTUBE_API_KEY to load trending videos.")
     published_after = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 7 * 86400))
     with httpx.Client(timeout=20) as c:
         s = c.get("https://www.googleapis.com/youtube/v3/search", params={
-            "part": "snippet", "type": "video", "order": "viewCount",
+            "part": "snippet", "type": "video", "order": "viewCount", "q": "twitch vod",
             "regionCode": region, "publishedAfter": published_after,
             "videoDuration": "long", "maxResults": min(limit, 50), "key": YT_KEY,
         }).json()
