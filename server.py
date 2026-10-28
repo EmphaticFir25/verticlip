@@ -130,6 +130,8 @@ TRENDING_CHANNELS = (
     "HasanAbi", "Mizkif", "Emiru", "Summit1G", "Shroud",
 )
 TRENDING_TTL = 3600  # seconds. Each refresh costs YouTube quota, so the result is cached.
+TRENDING_DAYS = 30
+TRENDING_PER_CHANNEL = 25  # newest uploads checked per channel
 LONG_FORM_SECONDS = 20 * 60
 YT_API = "https://www.googleapis.com/youtube/v3"
 _channel_ids: dict[str, str] = {}   # channel name -> channelId (search costs 100 units, so cache it)
@@ -139,7 +141,10 @@ _ISO_DURATION = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
 
 
 def _yt(c: httpx.Client, path: str, **params) -> dict:
-    return c.get(f"{YT_API}/{path}", params={**params, "key": YT_KEY}).json()
+    data = c.get(f"{YT_API}/{path}", params={**params, "key": YT_KEY}).json()
+    if "error" in data:  # quota, bad key, or API disabled. Surface it instead of an empty list.
+        raise HTTPException(502, f"YouTube API: {data['error'].get('message', 'unknown error')}")
+    return data
 
 
 def _channel_id(c: httpx.Client, name: str) -> Optional[str]:
@@ -167,7 +172,7 @@ def _seconds(iso: str) -> int:
 
 
 def _fetch_trending() -> list[dict]:
-    published_after = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 7 * 86400))
+    published_after = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - TRENDING_DAYS * 86400))
     with httpx.Client(timeout=20) as c:
         ids: list[str] = []
         for name in TRENDING_CHANNELS:
@@ -175,7 +180,7 @@ def _fetch_trending() -> list[dict]:
             playlist = _uploads_playlist(c, cid) if cid else None
             if not playlist:
                 continue
-            feed = _yt(c, "playlistItems", part="snippet,contentDetails", playlistId=playlist, maxResults=10)
+            feed = _yt(c, "playlistItems", part="snippet,contentDetails", playlistId=playlist, maxResults=TRENDING_PER_CHANNEL)
             ids += [i["contentDetails"]["videoId"] for i in feed.get("items", [])
                     if i.get("snippet", {}).get("publishedAt", "") >= published_after]
         items = []
@@ -197,12 +202,14 @@ def _fetch_trending() -> list[dict]:
 
 @app.get("/api/trending")
 def trending(limit: int = 48):
-    """Most-viewed long-form uploads from TRENDING_CHANNELS in the last 7 days, cached for an hour."""
+    """Most-viewed long-form uploads from TRENDING_CHANNELS in the last TRENDING_DAYS, cached for an hour."""
     if not YT_KEY:
         raise HTTPException(500, "Set YOUTUBE_API_KEY to load trending videos.")
     if time.time() - _trending_cache["at"] > TRENDING_TTL:
-        _trending_cache["items"] = _fetch_trending()
-        _trending_cache["at"] = time.time()
+        items = _fetch_trending()
+        if items:  # don't cache an empty result, so the next request retries
+            _trending_cache["items"] = items
+            _trending_cache["at"] = time.time()
     return {"items": _trending_cache["items"][:limit]}
 
 
