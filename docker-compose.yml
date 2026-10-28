@@ -1,0 +1,16 @@
+services:
+  verticlip:
+    build: .
+    image: verticlip:latest
+    restart: unless-stopped
+    ports:
+      - "33214:33214"
+    env_file:
+      - .env
+    environment:
+      # Container path to the font installed by the Dockerfile.
+      FONT_PATH: /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+    volumes:
+      - ./data:/app/data
+      - ./client_secret.json:/app/client_secret.json:ro
+      - ./data/hf-cache:/root/.cache/huggingface
