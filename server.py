@@ -124,57 +124,86 @@ def index():
 
 # ---------- trending ----------
 
-TRENDING_CHANNELS = ("Joe Bartolozzi", "Jynxi", "MrBeast", "xQcOW", "Kai Cenat", "Ludwig", "IShowSpeed", "Adin Ross")
-_channel_ids: dict[str, str] = {}  # channel name -> channelId, cached to save API quota
-YT_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+TRENDING_CHANNELS = (
+    "Joe Bartolozzi", "Jynxi", "MrBeast", "xQcOW", "Kai Cenat", "Ludwig", "IShowSpeed", "Adin Ross",
+    "Ninja", "Pokimane", "Valkyrae", "Sykkuno", "Dr Disrespect", "TimTheTatman", "Asmongold",
+    "HasanAbi", "Mizkif", "Emiru", "Summit1G", "Shroud",
+)
+TRENDING_TTL = 3600  # seconds. Each refresh costs YouTube quota, so the result is cached.
+LONG_FORM_SECONDS = 20 * 60
+YT_API = "https://www.googleapis.com/youtube/v3"
+_channel_ids: dict[str, str] = {}   # channel name -> channelId (search costs 100 units, so cache it)
+_uploads_ids: dict[str, str] = {}   # channelId -> uploads playlistId
+_trending_cache: dict = {"at": 0.0, "items": []}
+_ISO_DURATION = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
+
+
+def _yt(c: httpx.Client, path: str, **params) -> dict:
+    return c.get(f"{YT_API}/{path}", params={**params, "key": YT_KEY}).json()
 
 
 def _channel_id(c: httpx.Client, name: str) -> Optional[str]:
     if name not in _channel_ids:
-        s = c.get(YT_SEARCH_URL, params={
-            "part": "snippet", "type": "channel", "q": name, "maxResults": 1, "key": YT_KEY,
-        }).json()
-        items = s.get("items", [])
+        items = _yt(c, "search", part="snippet", type="channel", q=name, maxResults=1).get("items", [])
         if items:
             _channel_ids[name] = items[0]["id"]["channelId"]
     return _channel_ids.get(name)
 
 
-@app.get("/api/trending")
-def trending(limit: int = 48):
-    """Most-viewed long-form uploads from TRENDING_CHANNELS in the last 7 days, via the YouTube Data API."""
-    if not YT_KEY:
-        raise HTTPException(500, "Set YOUTUBE_API_KEY to load trending videos.")
+def _uploads_playlist(c: httpx.Client, channel_id: str) -> Optional[str]:
+    if channel_id not in _uploads_ids:
+        items = _yt(c, "channels", part="contentDetails", id=channel_id).get("items", [])
+        if items:
+            _uploads_ids[channel_id] = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    return _uploads_ids.get(channel_id)
+
+
+def _seconds(iso: str) -> int:
+    m = _ISO_DURATION.fullmatch(iso or "")
+    if not m:
+        return 0
+    h, mi, s = (int(x or 0) for x in m.groups())
+    return h * 3600 + mi * 60 + s
+
+
+def _fetch_trending() -> list[dict]:
     published_after = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 7 * 86400))
-    per_channel = max(1, min(limit, 50) // len(TRENDING_CHANNELS))
     with httpx.Client(timeout=20) as c:
         ids: list[str] = []
         for name in TRENDING_CHANNELS:
             cid = _channel_id(c, name)
-            if not cid:
+            playlist = _uploads_playlist(c, cid) if cid else None
+            if not playlist:
                 continue
-            s = c.get(YT_SEARCH_URL, params={
-                "part": "snippet", "type": "video", "order": "viewCount", "channelId": cid,
-                "publishedAfter": published_after, "videoDuration": "long",
-                "maxResults": per_channel, "key": YT_KEY,
-            }).json()
-            ids += [i["id"]["videoId"] for i in s.get("items", [])]
-        if not ids:
-            return {"items": []}
-        v = c.get("https://www.googleapis.com/youtube/v3/videos", params={
-            "part": "snippet,statistics", "id": ",".join(ids), "key": YT_KEY,
-        }).json()
-    items = []
-    for it in v.get("items", []):
-        items.append({
-            "id": it["id"],
-            "title": it["snippet"]["title"],
-            "channel": it["snippet"]["channelTitle"],
-            "thumbnail": it["snippet"]["thumbnails"].get("medium", {}).get("url", ""),
-            "views": int(it.get("statistics", {}).get("viewCount", 0)),
-        })
+            feed = _yt(c, "playlistItems", part="snippet,contentDetails", playlistId=playlist, maxResults=10)
+            ids += [i["contentDetails"]["videoId"] for i in feed.get("items", [])
+                    if i.get("snippet", {}).get("publishedAt", "") >= published_after]
+        items = []
+        for start in range(0, len(ids), 50):
+            v = _yt(c, "videos", part="snippet,statistics,contentDetails", id=",".join(ids[start:start + 50]))
+            for it in v.get("items", []):
+                if _seconds(it.get("contentDetails", {}).get("duration", "")) < LONG_FORM_SECONDS:
+                    continue
+                items.append({
+                    "id": it["id"],
+                    "title": it["snippet"]["title"],
+                    "channel": it["snippet"]["channelTitle"],
+                    "thumbnail": it["snippet"]["thumbnails"].get("medium", {}).get("url", ""),
+                    "views": int(it.get("statistics", {}).get("viewCount", 0)),
+                })
     items.sort(key=lambda x: x["views"], reverse=True)
-    return {"items": items}
+    return items
+
+
+@app.get("/api/trending")
+def trending(limit: int = 48):
+    """Most-viewed long-form uploads from TRENDING_CHANNELS in the last 7 days, cached for an hour."""
+    if not YT_KEY:
+        raise HTTPException(500, "Set YOUTUBE_API_KEY to load trending videos.")
+    if time.time() - _trending_cache["at"] > TRENDING_TTL:
+        _trending_cache["items"] = _fetch_trending()
+        _trending_cache["at"] = time.time()
+    return {"items": _trending_cache["items"][:limit]}
 
 
 # ---------- watermark ----------
