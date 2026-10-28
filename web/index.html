@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Verticlip — Turn long videos into viral Shorts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0812;
+    --panel: #14111f;
+    --panel-2: #1c1830;
+    --line: #2a2445;
+    --text: #f4f2ff;
+    --muted: #9b95b8;
+    --violet: #8b5cf6;
+    --pink: #ec4899;
+    --amber: #f59e0b;
+    --grad: linear-gradient(120deg, #8b5cf6 0%, #ec4899 60%, #f59e0b 100%);
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1;
+    background:
+      radial-gradient(900px 500px at 10% -10%, rgba(139,92,246,.25), transparent 60%),
+      radial-gradient(700px 500px at 100% 10%, rgba(236,72,153,.18), transparent 60%);
+  }
+  h1, h2, h3, .display { font-family: "Space Grotesk", Inter, sans-serif; letter-spacing: -0.02em; margin: 0; }
+  a { color: inherit; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+  /* Nav */
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .logo { font-family: "Space Grotesk"; font-weight: 700; font-size: 22px; display: flex; gap: 10px; align-items: center; }
+  .logo-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--grad); display: grid; place-items: center; color: #fff; font-size: 16px; }
+  .nav-links { display: flex; gap: 22px; color: var(--muted); font-size: 15px; }
+  .nav-links a { text-decoration: none; }
+  .nav-links a:hover { color: var(--text); }
+
+  /* Hero */
+  .hero { text-align: center; padding: 56px 0 28px; }
+  .eyebrow { display: inline-block; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 13px; background: rgba(255,255,255,.02); }
+  .hero h1 { font-size: clamp(40px, 6vw, 70px); line-height: 1.02; margin: 20px 0 16px; }
+  .grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p { color: var(--muted); font-size: 18px; max-width: 620px; margin: 0 auto; }
+
+  /* Command bar */
+  .bar {
+    margin: 36px auto 0; max-width: 780px; display: flex; gap: 10px; padding: 10px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+    box-shadow: 0 20px 60px -20px rgba(139,92,246,.35);
+  }
+  .bar input {
+    flex: 1; background: transparent; border: 0; outline: 0; color: var(--text);
+    font: 500 16px Inter; padding: 0 18px; min-width: 0;
+  }
+  .btn {
+    border: 0; cursor: pointer; border-radius: 999px; padding: 14px 24px; font: 600 15px Inter;
+    color: #fff; background: var(--grad); transition: transform .15s, filter .15s;
+  }
+  .btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+  .btn.small { padding: 9px 16px; font-size: 13px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .hint { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
+
+  /* Sections */
+  section { padding: 44px 0; }
+  .section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .section-head h2 { font-size: 30px; }
+  .section-head p { margin: 6px 0 0; color: var(--muted); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line); background: var(--panel); color: var(--muted); padding: 8px 14px; border-radius: 999px; cursor: pointer; font-size: 13px; }
+  .chip.on { color: #fff; border-color: transparent; background: var(--grad); }
+
+  /* Trending grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+  .vcard {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; cursor: pointer; transition: transform .18s, border-color .18s;
+  }
+  .vcard:hover { transform: translateY(-3px); border-color: #4b3f80; }
+  .vcard img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: var(--panel-2); }
+  .vcard .meta { padding: 12px 14px 14px; }
+  .vcard .t { font-weight: 600; font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .vcard .s { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .rank { position: absolute; margin: 8px; background: rgba(10,8,18,.8); padding: 3px 8px; border-radius: 8px; font: 700 12px "Space Grotesk"; }
+  .thumb-wrap { position: relative; }
+
+  /* Workspace */
+  .workspace { display: grid; grid-template-columns: 340px 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 900px) { .workspace { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .panel h3 { font-size: 17px; margin-bottom: 14px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
+  .field input[type=text], .field select {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 12px; padding: 11px 12px; font: 14px Inter;
+  }
+  .range { width: 100%; accent-color: var(--violet); }
+  .switch { display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: var(--muted); }
+
+  /* Accounts */
+  .acct { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; background: var(--panel-2); }
+  .acct .who { font-size: 14px; font-weight: 600; }
+  .acct .plat { font-size: 12px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #3f3a5c; }
+  .dot.on { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+
+  /* Clips */
+  .clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+  .clip {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; position: relative;
+  }
+  .clip .frame {
+    aspect-ratio: 9/16; background: linear-gradient(160deg, #2a1f4d, #0f0c1c 70%); position: relative; overflow: hidden;
+  }
+  .clip video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .caption-burn {
+    position: absolute; left: 8%; right: 8%; bottom: 14%; text-align: center; font: 800 18px "Space Grotesk";
+    text-transform: uppercase; color: #fff; text-shadow: 0 2px 0 #000, 0 0 14px rgba(0,0,0,.6);
+    background: none;
+  }
+  .caption-burn span { background: var(--amber); color: #111; padding: 2px 6px; border-radius: 4px; }
+  .score {
+    position: absolute; top: 12px; left: 12px; background: var(--grad); color: #fff; font: 700 13px "Space Grotesk";
+    padding: 5px 10px; border-radius: 999px;
+  }
+  .watermark { position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; border-radius: 10px; background: rgba(0,0,0,.35); display: grid; place-items: center; font-size: 11px; color: #fff; overflow: hidden; }
+  .watermark img { width: 100%; height: 100%; object-fit: contain; }
+  .clip .foot { padding: 12px 14px; }
+  .clip .foot .title { font-weight: 600; font-size: 14px; }
+  .clip .foot .why { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.4; }
+  .clip .sel { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+
+  .empty { border: 1px dashed #3b3360; border-radius: var(--radius); padding: 60px 20px; text-align: center; color: var(--muted); }
+  .progress { height: 6px; background: var(--panel-2); border-radius: 999px; overflow: hidden; margin: 14px 0 8px; }
+  .progress > div { height: 100%; width: 0; background: var(--grad); transition: width .4s; }
+  .status { font-size: 13px; color: var(--muted); }
+
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--line); padding: 12px 18px; border-radius: 14px; font-size: 14px; display: none; z-index: 10; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0 60px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="logo"><div class="logo-mark">▶</div>Verticlip</div>
+    <div class="nav-links">
+      <a href="#trending">Trending</a>
+      <a href="#studio">Studio</a>
+      <a href="#accounts">Accounts</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <span class="eyebrow">Local AI · Captions · Auto-publish</span>
+    <h1>Long videos in.<br /><span class="grad-text">Viral Shorts out.</span></h1>
+    <p>Paste a link or pick a trending video. Verticlip finds the moments worth clipping, adds captions and your watermark, and posts to every connected channel.</p>
+
+    <form class="bar" id="urlForm">
+      <input id="urlInput" type="url" placeholder="Paste a YouTube or video URL…" required />
+      <button class="btn" type="submit">Find clips</button>
+    </form>
+    <div class="hint">Analysis runs on your LM Studio model — nothing leaves your machine except the upload step.</div>
+  </header>
+
+  <section id="trending">
+    <div class="section-head">
+      <div>
+        <h2>Trending now</h2>
+        <p>Top recent videos, ranked by views. Click one to start clipping.</p>
+      </div>
+      <div class="chips" id="regionChips">
+        <span class="chip on" data-r="US">United States</span>
+        <span class="chip" data-r="GB">UK</span>
+        <span class="chip" data-r="IN">India</span>
+        <span class="chip" data-r="BR">Brazil</span>
+      </div>
+    </div>
+    <div class="grid" id="trendGrid"></div>
+  </section>
+
+  <section id="studio">
+    <div class="section-head">
+      <div>
+        <h2>Clip studio</h2>
+        <p>Tune the look, then pick the moments to publish.</p>
+      </div>
+    </div>
+    <div class="workspace">
+      <aside class="panel">
+        <h3>Output settings</h3>
+        <div class="field">
+          <label>Clip length — <span id="lenVal">30</span>s</label>
+          <input class="range" type="range" id="clipLen" min="15" max="90" value="30" />
+        </div>
+        <div class="field">
+          <label>Max clips</label>
+          <input class="range" type="range" id="maxClips" min="3" max="15" value="6" />
+        </div>
+        <div class="field">
+          <label>Caption style</label>
+          <select id="capStyle">
+            <option value="bold">Bold highlight</option>
+            <option value="clean">Clean white</option>
+            <option value="pop">Pop (word-by-word)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Watermark logo</label>
+          <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp" />
+        </div>
+        <div class="field switch">
+          <span>Auto-caption every clip</span>
+          <input type="checkbox" id="autoCap" checked />
+        </div>
+        <button class="btn" id="analyzeBtn" style="width:100%">Analyze &amp; generate clips</button>
+        <div class="progress"><div id="bar"></div></div>
+        <div class="status" id="status">Idle.</div>
+      </aside>
+
+      <div>
+        <div class="empty" id="emptyState">Your generated clips will appear here, scored by how clippable each moment is.</div>
+        <div class="clips" id="clipGrid"></div>
+        <div id="publishBar" style="display:none; margin-top:18px;" class="panel">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+            <div class="status" id="selCount">0 clips selected</div>
+            <button class="btn" id="publishBtn">Publish to all connected accounts</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="accounts">
+    <div class="section-head">
+      <div>
+        <h2>Connected accounts</h2>
+        <p>Connect several channels to multiply reach. Every clip goes to all selected accounts.</p>
+      </div>
+    </div>
+    <div class="workspace" style="grid-template-columns: 1fr 1fr;">
+      <div class="panel">
+        <h3>YouTube</h3>
+        <div id="ytList"></div>
+        <a class="btn ghost small" href="/auth/youtube/start">+ Connect YouTube channel</a>
+      </div>
+      <div class="panel">
+        <h3>TikTok</h3>
+        <div id="ttList"></div>
+        <a class="btn ghost small" href="/auth/tiktok/start">+ Connect TikTok account</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>Verticlip · Built for creators who post every day. · <a href="https://emphaticfir25.github.io/verticlip/terms.html">Terms</a> · <a href="https://emphaticfir25.github.io/verticlip/privacy.html">Privacy</a></footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { region: "US", clips: [], selected: new Set(), logoUrl: null, currentUrl: null };
+
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toast._t); toast._t = setTimeout(() => (t.style.display = "none"), 3200);
+}
+function setProgress(pct, text) { $("#bar").style.width = pct + "%"; $("#status").textContent = text; }
+function fmtViews(n) { n = Number(n) || 0; return n >= 1e6 ? (n/1e6).toFixed(1)+"M" : n >= 1e3 ? (n/1e3).toFixed(0)+"K" : String(n); }
+
+// Trending
+async function loadTrending() {
+  $("#trendGrid").innerHTML = "<div class='status'>Loading trending…</div>";
+  try {
+    const r = await fetch(`/api/trending?region=${state.region}&limit=50`);
+    const data = await r.json();
+    $("#trendGrid").innerHTML = data.items.map((v, i) => `
+      <div class="vcard" data-url="https://www.youtube.com/watch?v=${v.id}">
+        <div class="thumb-wrap">
+          <img loading="lazy" src="${v.thumbnail}" alt="" />
+          <span class="rank">#${i+1}</span>
+        </div>
+        <div class="meta">
+          <div class="t">${escapeHtml(v.title)}</div>
+          <div class="s">${escapeHtml(v.channel)} · ${fmtViews(v.views)} views</div>
+        </div>
+      </div>`).join("");
+  } catch (e) {
+    $("#trendGrid").innerHTML = "<div class='status'>Couldn't load trending. Check the server is running.</div>";
+  }
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+$("#regionChips").addEventListener("click", (e) => {
+  const c = e.target.closest(".chip"); if (!c) return;
+  document.querySelectorAll("#regionChips .chip").forEach(x => x.classList.remove("on"));
+  c.classList.add("on"); state.region = c.dataset.r; loadTrending();
+});
+$("#trendGrid").addEventListener("click", (e) => {
+  const card = e.target.closest(".vcard"); if (!card) return;
+  startAnalysis(card.dataset.url);
+});
+$("#urlForm").addEventListener("submit", (e) => { e.preventDefault(); startAnalysis($("#urlInput").value.trim()); });
+$("#clipLen").addEventListener("input", (e) => ($("#lenVal").textContent = e.target.value));
+$("#analyzeBtn").addEventListener("click", () => { if (state.currentUrl) startAnalysis(state.currentUrl); else toast("Pick a video or paste a URL first."); });
+
+$("#logoFile").addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  fetch("/api/logo", { method: "POST", body: fd }).then(r => r.json()).then(d => {
+    state.logoUrl = d.url; toast("Watermark saved. It will appear on every clip.");
+    document.querySelectorAll(".watermark").forEach(w => w.innerHTML = `<img src="${d.url}" alt="" />`);
+  });
+});
+
+// Analysis
+async function startAnalysis(url) {
+  if (!url) return;
+  state.currentUrl = url; state.clips = []; state.selected.clear();
+  $("#urlInput").value = url;
+  $("#clipGrid").innerHTML = ""; $("#emptyState").style.display = "none";
+  $("#publishBar").style.display = "none";
+  document.getElementById("studio").scrollIntoView({ behavior: "smooth" });
+  $("#analyzeBtn").disabled = true;
+  setProgress(5, "Downloading and transcribing…");
+
+  const params = {
+    url,
+    clip_len: Number(document.getElementById("clipLen").value),
+    max_clips: Number(document.getElementById("maxClips").value),
+    caption_style: document.getElementById("capStyle").value,
+    auto_caption: document.getElementById("autoCap").checked,
+    logo_url: state.logoUrl
+  };
+  try {
+    const res = await fetch("/api/clips", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params)
+    });
+    const job = await res.json();
+    await pollJob(job.job_id);
+  } catch (e) {
+    setProgress(0, "Something went wrong. Is the server and LM Studio running?");
+  } finally {
+    $("#analyzeBtn").disabled = false;
+  }
+}
+
+async function pollJob(jobId) {
+  while (true) {
+    const r = await fetch(`/api/jobs/${jobId}`);
+    const j = await r.json();
+    setProgress(j.progress || 0, j.message || "Working…");
+    if (j.status === "done") { renderClips(j.clips); setProgress(100, `Done — ${j.clips.length} clips ranked by clippability.`); return; }
+    if (j.status === "error") { setProgress(0, "Error: " + j.message); return; }
+    await new Promise(res => setTimeout(res, 1500));
+  }
+}
+
+function renderClips(clips) {
+  state.clips = clips;
+  const style = document.getElementById("capStyle").value;
+  const watermark = state.logoUrl ? `<img src="${state.logoUrl}" alt="" />` : "AD";
+  $("#clipGrid").innerHTML = clips.map((c, i) => `
+    <div class="clip" data-i="${i}">
+      <div class="frame">
+        <video muted loop playsinline preload="metadata" src="${c.preview_url}"></video>
+        <div class="score">${Math.round(c.score)} / 100</div>
+        <div class="watermark">${watermark}</div>
+        ${c.caption ? `<div class="caption-burn">${style === "bold" ? `<span>${escapeHtml(c.caption)}</span>` : escapeHtml(c.caption)}</div>` : ""}
+      </div>
+      <div class="foot">
+        <div class="title">${escapeHtml(c.title)}</div>
+        <div class="why">${escapeHtml(c.reason)}</div>
+        <label class="sel"><input type="checkbox" class="pick" data-i="${i}" ${c.score >= 70 ? "checked" : ""} /> Publish this clip</label>
+      </div>
+    </div>`).join("");
+  document.querySelectorAll(".clip video").forEach(v => {
+    v.parentElement.addEventListener("mouseenter", () => v.play().catch(()=>{}));
+    v.parentElement.addEventListener("mouseleave", () => v.pause());
+  });
+  syncSelection();
+  $("#publishBar").style.display = "block";
+}
+
+function syncSelection() {
+  const picks = [...document.querySelectorAll(".pick:checked")].map(p => Number(p.dataset.i));
+  $("#selCount").textContent = `${picks.length} clip${picks.length === 1 ? "" : "s"} selected · ${document.querySelectorAll("#ytList .on, #ttList .on").length} account(s) connected`;
+  state.selected = new Set(picks);
+}
+$("#clipGrid").addEventListener("change", (e) => { if (e.target.classList.contains("pick")) syncSelection(); });
+
+$("#publishBtn").addEventListener("click", async () => {
+  const picks = [...state.selected].map(i => state.clips[i].id);
+  if (!picks.length) return toast("Select at least one clip.");
+  $("#publishBtn").disabled = true;
+  try {
+    const r = await fetch("/api/publish", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clip_ids: picks, platforms: ["youtube_shorts", "tiktok"] })
+    });
+    const d = await r.json();
+    toast(d.message || "Queued for publishing.");
+  } catch { toast("Publish failed. Check the server log."); }
+  finally { $("#publishBtn").disabled = false; }
+});
+
+// Accounts
+async function loadAccounts() {
+  try {
+    const r = await fetch("/api/accounts"); const d = await r.json();
+    const render = (list, plat) => list.length
+      ? list.map(a => `<div class="acct"><div><div class="who"><span class="dot on"></span>${escapeHtml(a.name)}</div><div class="plat">${plat}</div></div><button class="btn ghost small" data-remove="${a.id}">Remove</button></div>`).join("")
+      : `<div class="status" style="margin-bottom:12px">No accounts connected yet.</div>`;
+    $("#ytList").innerHTML = render(d.youtube, "YouTube Shorts");
+    $("#ttList").innerHTML = render(d.tiktok, "TikTok");
+    document.querySelectorAll("#ytList .acct, #ttList .acct").forEach(el => el.classList.add("on"));
+    syncSelection();
+  } catch {}
+}
+
+function escapeText(s){return s;}
+
+loadTrending();
+loadAccounts();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+httpx
+pydantic
+python-multipart
+yt-dlp
+faster-whisper
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+# System requirement: ffmpeg on PATH
+# LM Studio: start the local server (default http://localhost:1234/v1) with a chat model loaded
