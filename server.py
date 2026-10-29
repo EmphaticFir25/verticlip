@@ -479,9 +479,9 @@ Format: Layer, Start, End, Style, Text
 
 
 def build_filters(logo_path: Optional[Path], font: Optional[Path]) -> tuple[list[str], str]:
-    """filter_complex chain: 9:16 crop, logo top-right, text watermark, captions.
+    """filter_complex chain: 9:16 letterbox (whole frame kept, black bars), logo top-right, text watermark, captions.
     Returns the filter parts and the final video label."""
-    filters = ["[0:v]scale=-2:1920,crop=1080:1920,setsar=1[v0]"]
+    filters = ["[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1[v0]"]
     last = "[v0]"
     if logo_path:
         filters.append("[1:v]scale=170:-1[lg]")
