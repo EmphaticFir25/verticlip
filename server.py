@@ -3,7 +3,7 @@ Verticlip hosted — backend.
 
 Pipeline per job:
   1. yt-dlp downloads the source (user-supplied URL or a trending pick)
-  2. faster-whisper transcribes locally (word timestamps)
+  2. Whisper adapter transcribes (word timestamps); WHISPER_URL points at it
   3. LM Studio (OpenAI-compatible, localhost) scores transcript windows for clippable moments
   4. ffmpeg cuts each moment to 9:16, burns captions (ASS), overlays the logo and text watermark
   5. Clips are stored; /api/publish uploads selected clips to every connected account
@@ -51,7 +51,8 @@ PUBLIC_BASE = os.getenv("PUBLIC_BASE", "http://localhost:33214")
 LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://localhost:1234/v1")
 LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "local-model")
 LMSTUDIO_API_KEY = os.getenv("LMSTUDIO_API_KEY", "")
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
+WHISPER_URL = os.getenv("WHISPER_URL", "http://localhost:9000/v1").rstrip("/")
+WHISPER_API_KEY = os.getenv("WHISPER_API_KEY", "")
 YOUTUBE_PRIVACY = os.getenv("YOUTUBE_PRIVACY", "private").strip().lower()
 if YOUTUBE_PRIVACY not in ("private", "unlisted", "public"):
     YOUTUBE_PRIVACY = "private"
@@ -314,15 +315,30 @@ def download(url: str, out_dir: Path) -> Path:
 
 
 def transcribe(video: Path) -> list[dict]:
-    """Local word-level transcription with faster-whisper."""
-    from faster_whisper import WhisperModel
-    model = WhisperModel(WHISPER_MODEL, device="auto", compute_type="int8")
-    segments, _ = model.transcribe(str(video), word_timestamps=True, vad_filter=True)
-    words = []
-    for seg in segments:
-        for w in seg.words or []:
-            words.append({"start": w.start, "end": w.end, "word": w.word.strip()})
-    return words
+    """Word-level transcription via the Whisper adapter (OpenAI-style endpoint, see WHISPER_URL)."""
+    wav = video.with_name(video.stem + ".whisper.wav")
+    run_tool([
+        "ffmpeg", "-y", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav),
+    ], label="ffmpeg")
+    headers = {"Authorization": f"Bearer {WHISPER_API_KEY}"} if WHISPER_API_KEY else {}
+    with wav.open("rb") as f:
+        r = httpx.post(
+            f"{WHISPER_URL}/audio/transcriptions",
+            headers=headers,
+            files={"file": (wav.name, f, "audio/wav")},
+            data={
+                "model": "whisper-1",
+                "response_format": "verbose_json",
+                "timestamp_granularities[]": "word",
+            },
+            timeout=None,
+        )
+    if r.status_code != 200:
+        raise RuntimeError(f"Whisper adapter HTTP {r.status_code}: {r.text[:300]}")
+    return [
+        {"start": w["start"], "end": w["end"], "word": w["word"]}
+        for w in r.json().get("words", [])
+    ]
 
 
 def parse_clips(content: str) -> list[dict]:
@@ -533,7 +549,7 @@ def run_job(job_id: str, req: ClipRequest) -> None:
         source = download(req.url, job_dir)
 
         store.update_job(job_id, stage="transcribe", progress=30,
-                         message="Transcribing locally (Whisper)…")
+                         message="Transcribing (Whisper adapter)…")
         words = transcribe(source)
 
         store.update_job(job_id, stage="score", progress=55,
