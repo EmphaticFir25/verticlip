@@ -3,574 +3,79 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Verticlip — Turn long videos into viral Shorts</title>
+<title>Verticlip</title>
+<meta name="description" content="Turn long videos into vertical Shorts with captions and your watermark." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='9' y='2' width='14' height='28' rx='5' fill='none' stroke='%234fe3c8' stroke-width='3'/%3E%3Cpath d='M14 11l6 5-6 5z' fill='%23ff7a59'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-<style>
-  :root {
-    --bg: #0a0812;
-    --panel: #14111f;
-    --panel-2: #1c1830;
-    --line: #2a2445;
-    --text: #f4f2ff;
-    --muted: #9b95b8;
-    --violet: #8b5cf6;
-    --pink: #ec4899;
-    --amber: #f59e0b;
-    --ok: #22c55e;
-    --bad: #f87171;
-    --grad: linear-gradient(120deg, #8b5cf6 0%, #ec4899 60%, #f59e0b 100%);
-    --radius: 18px;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
-  body { background-attachment: fixed; }
-  body::before {
-    content: ""; position: fixed; inset: 0; z-index: -1;
-    background:
-      radial-gradient(900px 500px at 10% -10%, rgba(139,92,246,.25), transparent 60%),
-      radial-gradient(700px 500px at 100% 10%, rgba(236,72,153,.18), transparent 60%);
-  }
-  h1, h2, h3, .display { font-family: "Space Grotesk", Inter, sans-serif; letter-spacing: -0.02em; margin: 0; }
-  a { color: inherit; }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
-  .workspace > * { min-width: 0; }
-
-  /* Nav */
-  nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; gap: 12px; flex-wrap: wrap; }
-  .logo { font-family: "Space Grotesk"; font-weight: 700; font-size: 22px; display: flex; gap: 10px; align-items: center; }
-  .logo-mark { width: 30px; height: 30px; border-radius: 9px; background: var(--grad); display: grid; place-items: center; color: #fff; font-size: 16px; }
-  .nav-links { display: flex; gap: 22px; color: var(--muted); font-size: 15px; }
-  .nav-links a { text-decoration: none; }
-  .nav-links a:hover { color: var(--text); }
-
-  /* Hero */
-  .hero { text-align: center; padding: 56px 0 28px; }
-  .eyebrow { display: inline-block; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 13px; background: rgba(255,255,255,.02); }
-  .hero h1 { font-size: clamp(36px, 6vw, 70px); line-height: 1.02; margin: 20px 0 16px; }
-  .grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .hero p { color: var(--muted); font-size: 18px; max-width: 620px; margin: 0 auto; }
-
-  /* Command bar */
-  .bar {
-    margin: 36px auto 0; max-width: 780px; display: flex; gap: 10px; padding: 10px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
-    box-shadow: 0 20px 60px -20px rgba(139,92,246,.35);
-  }
-  .bar input {
-    flex: 1; background: transparent; border: 0; outline: 0; color: var(--text);
-    font: 500 16px Inter; padding: 0 18px; min-width: 0;
-  }
-  .btn {
-    border: 0; cursor: pointer; border-radius: 999px; padding: 14px 24px; font: 600 15px Inter;
-    color: #fff; background: var(--grad); transition: transform .15s, filter .15s;
-  }
-  .btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
-  .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
-  .btn.small { padding: 9px 16px; font-size: 13px; }
-  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-  .hint { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
-
-  /* Sections */
-  section { padding: 44px 0; }
-  .section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
-  .section-head h2 { font-size: 30px; }
-  .section-head p { margin: 6px 0 0; color: var(--muted); }
-  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-  .chip { border: 1px solid var(--line); background: var(--panel); color: var(--muted); padding: 8px 14px; border-radius: 999px; cursor: pointer; font-size: 13px; }
-  .chip.on { color: #fff; border-color: transparent; background: var(--grad); }
-
-  /* Trending grid */
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
-  .vcard {
-    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-    overflow: hidden; cursor: pointer; transition: transform .18s, border-color .18s;
-  }
-  .vcard:hover { transform: translateY(-3px); border-color: #4b3f80; }
-  .vcard img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: var(--panel-2); }
-  .vcard .meta { padding: 12px 14px 14px; }
-  .vcard .t { font-weight: 600; font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .vcard .s { color: var(--muted); font-size: 12px; margin-top: 6px; }
-  .rank { position: absolute; top: 0; left: 0; margin: 8px; background: rgba(10,8,18,.8); padding: 3px 8px; border-radius: 8px; font: 700 12px "Space Grotesk"; }
-  .thumb-wrap { position: relative; }
-
-  /* Workspace */
-  .workspace { display: grid; grid-template-columns: 340px 1fr; gap: 22px; align-items: start; }
-  .two-col { grid-template-columns: 1fr 1fr; }
-  @media (max-width: 900px) { .workspace { grid-template-columns: 1fr; } }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
-  .panel h3 { font-size: 17px; margin-bottom: 14px; }
-  .field { margin-bottom: 16px; }
-  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
-  .field input[type=text], .field select {
-    width: 100%; background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
-    border-radius: 12px; padding: 11px 12px; font: 14px Inter;
-  }
-  .range { width: 100%; accent-color: var(--violet); }
-  .switch { display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: var(--muted); }
-  .file-input { width: 100%; color: var(--muted); font-size: 13px; }
-
-  /* Stage stepper */
-  .stages { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 7px; font-size: 13px; color: var(--muted); }
-  .stages li { display: flex; align-items: center; gap: 9px; }
-  .stages li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #3f3a5c; flex: none; }
-  .stages li.done, .stages li.active { color: var(--text); }
-  .stages li.done::before { background: var(--ok); }
-  .stages li.active::before { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
-  .stages li.error::before { background: var(--bad); }
-
-  /* Accounts */
-  .acct { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; background: var(--panel-2); }
-  .acct .who { font-size: 14px; font-weight: 600; }
-  .acct .plat { font-size: 12px; color: var(--muted); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: #3f3a5c; }
-  .dot.on { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
-
-  /* Clips */
-  .clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-  .clip {
-    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; position: relative;
-    transition: transform .18s, border-color .18s;
-  }
-  .clip:hover { transform: translateY(-2px); border-color: #4b3f80; }
-  .clip .frame {
-    aspect-ratio: 9/16; background: linear-gradient(160deg, #2a1f4d, #0f0c1c 70%); position: relative; overflow: hidden; cursor: pointer;
-  }
-  .clip video { width: 100%; height: 100%; object-fit: cover; display: block; position: relative; z-index: 1; }
-  .caption-burn {
-    position: absolute; z-index: 2; left: 8%; right: 8%; bottom: 14%; text-align: center; font: 800 18px "Space Grotesk";
-    text-transform: uppercase; color: #fff; text-shadow: 0 2px 0 #000, 0 0 14px rgba(0,0,0,.6);
-    background: none; pointer-events: none;
-  }
-  .caption-burn span { background: var(--amber); color: #111; padding: 2px 6px; border-radius: 4px; }
-  .score {
-    position: absolute; z-index: 2; top: 12px; left: 12px; background: var(--grad); color: #fff; font: 700 13px "Space Grotesk";
-    padding: 5px 10px; border-radius: 999px; pointer-events: none;
-  }
-  /* Text watermark, mirrors the "Verticlip" drawtext in the rendered clip. Sits behind the video. */
-  .wm {
-    position: absolute; z-index: 0; top: 12px; right: 12px; display: flex; align-items: center; gap: 8px;
-    font: 700 13px "Space Grotesk"; color: #fff; text-shadow: 0 2px 4px #000; white-space: nowrap;
-  }
-  .wm img { width: 34px; height: 34px; border-radius: 8px; object-fit: contain; background: rgba(0,0,0,.35); }
-  .clip .foot { padding: 12px 14px 14px; }
-  .clip .foot .title { font-weight: 600; font-size: 14px; }
-  .clip .foot .why { color: var(--muted); font-size: 12px; margin-top: 4px; line-height: 1.4; }
-  .clip .sel { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
-  .pub { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .pub:empty { display: none; }
-  .pub span { font-size: 11px; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); overflow-wrap: anywhere; }
-  .pub .queued { color: var(--amber); border-color: #5c4a1f; }
-  .pub .uploaded { color: var(--ok); border-color: #1f5c3a; }
-  .pub .failed { color: var(--bad); border-color: #5c2a2a; }
-
-  /* Live watermark preview in the settings panel */
-  .wm-preview { width: 120px; aspect-ratio: 9/16; border-radius: 12px; background: linear-gradient(160deg, #2a1f4d, #0f0c1c 70%); position: relative; overflow: hidden; border: 1px solid var(--line); }
-  .wm-preview .wm { top: 8px; right: 8px; font-size: 10px; gap: 5px; }
-  .wm-preview .wm img { width: 22px; height: 22px; border-radius: 6px; }
-  .field-row { display: flex; gap: 14px; align-items: flex-end; }
-
-  .empty { border: 1px dashed #3b3360; border-radius: var(--radius); padding: 60px 20px; text-align: center; color: var(--muted); }
-  .progress { height: 6px; background: var(--panel-2); border-radius: 999px; overflow: hidden; margin: 14px 0 8px; }
-  .progress > div { height: 100%; width: 0; background: var(--grad); transition: width .4s; }
-  .status { font-size: 13px; color: var(--muted); }
-
-  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--line); padding: 12px 18px; border-radius: 14px; font-size: 14px; display: none; z-index: 10; max-width: calc(100% - 32px); }
-  footer { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0 60px; }
-
-  /* Phones */
-  @media (max-width: 640px) {
-    .wrap { padding: 0 16px; }
-    nav { padding: 16px 0; }
-    .nav-links { gap: 16px; font-size: 14px; }
-    .hero { padding: 36px 0 20px; }
-    .hero p { font-size: 16px; }
-    .bar { flex-direction: column; border-radius: var(--radius); padding: 10px; }
-    .bar input { padding: 12px 10px; }
-    .bar .btn { width: 100%; }
-    section { padding: 32px 0; }
-    .section-head h2 { font-size: 26px; }
-    .two-col { grid-template-columns: 1fr; }
-    .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-    .clips { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-    .caption-burn { font-size: 14px; }
-    .wm { font-size: 11px; top: 8px; right: 8px; }
-    .wm img { width: 26px; height: 26px; }
-    .panel { padding: 16px; }
-    .field-row { flex-direction: column; align-items: stretch; }
-  }
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/glass.css" />
+<link rel="stylesheet" href="/static/pages.css" />
 </head>
-<body>
-<div class="wrap">
-  <nav>
-    <div class="logo"><div class="logo-mark">▶</div>Verticlip</div>
-    <div class="nav-links">
-      <a href="#trending">Trending</a>
-      <a href="#studio">Studio</a>
-      <a href="#accounts">Accounts</a>
+<body data-page="home">
+<main class="wrap">
+  <section class="hero">
+    <div>
+      <h1>Cut the best 30 seconds out of any stream.</h1>
+      <p class="lede">Paste a link. Verticlip listens to the whole video on your computer, picks the moments worth posting, and renders them vertical with captions and your watermark.</p>
+      <form class="source-bar glass" id="sourceForm">
+        <label class="sr" for="urlInput">Video URL</label>
+        <input id="urlInput" type="url" placeholder="Paste a YouTube or video link" required autocomplete="off" />
+        <button class="btn" type="submit">Find clips</button>
+      </form>
+      <p class="hint">Analysis runs on your own machine. Nothing is uploaded until you publish a clip.</p>
     </div>
-  </nav>
-
-  <header class="hero">
-    <span class="eyebrow">Local AI · Captions · Auto-publish</span>
-    <h1>Long videos in.<br /><span class="grad-text">Viral Shorts out.</span></h1>
-    <p>Paste a link or pick a trending video. Verticlip finds the moments worth clipping, adds captions and your watermark, and posts to every connected channel.</p>
-
-    <form class="bar" id="urlForm">
-      <input id="urlInput" type="url" placeholder="Paste a YouTube or video URL…" required />
-      <button class="btn" type="submit">Find clips</button>
-    </form>
-    <div class="hint">Analysis runs on your LM Studio model — nothing leaves your machine except the upload step.</div>
-  </header>
-
-  <section id="trending">
-    <div class="section-head">
-      <div>
-        <h2>Trending now</h2>
-        <p>Top recent videos, ranked by views. Click one to start clipping.</p>
-      </div>
-      <div class="chips" id="regionChips">
-        <span class="chip on" data-r="US">United States</span>
-        <span class="chip" data-r="GB">UK</span>
-        <span class="chip" data-r="IN">India</span>
-        <span class="chip" data-r="BR">Brazil</span>
-      </div>
-    </div>
-    <div class="grid" id="trendGrid"></div>
-  </section>
-
-  <section id="studio">
-    <div class="section-head">
-      <div>
-        <h2>Clip studio</h2>
-        <p>Tune the look, then pick the moments to publish.</p>
-      </div>
-    </div>
-    <div class="workspace">
-      <aside class="panel">
-        <h3>Output settings</h3>
-        <div class="field">
-          <label>Clip length — <span id="lenVal">30</span>s</label>
-          <input class="range" type="range" id="clipLen" min="15" max="90" value="30" />
-        </div>
-        <div class="field">
-          <label>Max clips — <span id="maxVal">6</span></label>
-          <input class="range" type="range" id="maxClips" min="3" max="15" value="6" />
-        </div>
-        <div class="field">
-          <label>Caption style</label>
-          <select id="capStyle">
-            <option value="bold">Bold highlight</option>
-            <option value="clean">Clean white</option>
-            <option value="pop">Pop (word-by-word)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Watermark logo (optional)</label>
-          <input class="file-input" type="file" id="logoFile" accept="image/png,image/jpeg,image/webp" />
-        </div>
-        <div class="field field-row">
-          <div>
-            <label>Watermark preview</label>
-            <div class="wm-preview" id="wmPreview"></div>
-          </div>
-        </div>
-        <div class="field switch">
-          <span>Auto-caption every clip</span>
-          <input type="checkbox" id="autoCap" checked />
-        </div>
-        <button class="btn" id="analyzeBtn" style="width:100%">Analyze &amp; generate clips</button>
-        <div class="progress"><div id="bar"></div></div>
-        <div class="status" id="status">Idle.</div>
-        <ol class="stages" id="stages">
-          <li data-stage="download">Download source</li>
-          <li data-stage="transcribe">Transcribe speech</li>
-          <li data-stage="score">Score moments</li>
-          <li data-stage="render">Render clips</li>
-        </ol>
-      </aside>
-
-      <div>
-        <div class="empty" id="emptyState">Your generated clips will appear here, scored by how clippable each moment is.</div>
-        <div class="clips" id="clipGrid"></div>
-        <div id="publishBar" style="display:none; margin-top:18px;" class="panel">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
-            <div class="status" id="selCount">0 clips selected</div>
-            <button class="btn" id="publishBtn">Publish to all connected accounts</button>
-          </div>
-        </div>
-      </div>
+    <div class="crop" aria-hidden="true">
+      <div class="scene dim"><span class="sun"></span><span class="hill a"></span><span class="hill b"></span><span class="wave"></span></div>
+      <div class="scene lit"><span class="sun"></span><span class="hill a"></span><span class="hill b"></span><span class="wave"></span></div>
+      <div class="pane"><b>WAIT, WATCH THIS</b></div>
     </div>
   </section>
 
-  <section id="accounts">
-    <div class="section-head">
-      <div>
-        <h2>Connected accounts</h2>
-        <p>Connect several channels to multiply reach. Clips go only to the accounts you publish to.</p>
-      </div>
+  <section class="resume glass" id="resume" hidden>
+    <div>
+      <h3 id="resumeTitle">Pick up where you left off</h3>
+      <p class="muted" id="resumeText"></p>
     </div>
-    <div class="workspace two-col">
-      <div class="panel">
-        <h3>YouTube</h3>
-        <div id="ytList"></div>
-        <a class="btn ghost small" href="/auth/youtube/start">+ Connect YouTube channel</a>
-      </div>
-      <div class="panel">
-        <h3>TikTok</h3>
-        <div id="ttList"></div>
-        <a class="btn ghost small" href="/auth/tiktok/start">+ Connect TikTok account</a>
-      </div>
-    </div>
+    <a class="btn" id="resumeLink" href="/studio">Open studio</a>
   </section>
 
-  <footer>Verticlip · Built for creators who post every day. · <a href="https://emphaticfir25.github.io/verticlip/terms.html">Terms</a> · <a href="https://emphaticfir25.github.io/verticlip/privacy.html">Privacy</a></footer>
-</div>
+  <ol class="steps" aria-label="How it works">
+    <li class="glass"><h3>Download</h3><p>Fetches the source video with yt-dlp, up to 1080p.</p></li>
+    <li class="glass"><h3>Transcribe</h3><p>Whisper writes word-level captions locally.</p></li>
+    <li class="glass"><h3>Score</h3><p>Your LM Studio model rates every stretch for hook, humor, and story.</p></li>
+    <li class="glass"><h3>Render</h3><p>Crops to 9:16, burns in captions, and adds your logo.</p></li>
+  </ol>
+</main>
 
-<div class="toast" id="toast" role="status"></div>
-
+<script src="/static/app.js"></script>
 <script>
-const $ = (s) => document.querySelector(s);
-const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-const STAGE_ORDER = ["download", "transcribe", "score", "render"];
-const PLATFORM_LABEL = { youtube_shorts: "YouTube", tiktok: "TikTok" };
-const state = {
-  region: "US", clips: [], selected: new Set(), logoUrl: null,
-  currentUrl: null, accountCount: 0, jobId: null,
-};
+  const { $ } = VC;
 
-function toast(msg) {
-  const t = $("#toast"); t.textContent = msg; t.style.display = "block";
-  clearTimeout(toast._t); toast._t = setTimeout(() => (t.style.display = "none"), 3200);
-}
-function setProgress(pct, text) { $("#bar").style.width = pct + "%"; $("#status").textContent = text; }
-function setStages(stage, status) {
-  const cur = STAGE_ORDER.indexOf(stage);
-  document.querySelectorAll("#stages li").forEach((li, i) => {
-    if (status === "done" || i < cur) li.className = "done";
-    else if (i === cur) li.className = status === "error" ? "error" : "active";
-    else li.className = "";
+  $("#sourceForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const url = $("#urlInput").value.trim();
+    if (url) location.href = `/studio?go=1&url=${encodeURIComponent(url)}`;
   });
-}
-function fmtViews(n) { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(0) + "K" : String(n); }
-function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
-async function errorText(res) {
-  try { const d = await res.json(); return typeof d.detail === "string" ? d.detail : "Request failed."; }
-  catch { return "Request failed."; }
-}
-function watermarkHtml() {
-  const logo = state.logoUrl ? `<img src="${escapeHtml(state.logoUrl)}" alt="" />` : "";
-  return `<div class="wm">${logo}<span>Verticlip</span></div>`;
-}
-function renderWatermarkPreview() { $("#wmPreview").innerHTML = watermarkHtml(); }
 
-// Trending
-async function loadTrending() {
-  $("#trendGrid").innerHTML = "<div class='status'>Loading trending…</div>";
-  try {
-    const r = await fetch(`/api/trending?region=${state.region}&limit=50`);
-    if (!r.ok) throw new Error(await errorText(r));
-    const data = await r.json();
-    $("#trendGrid").innerHTML = data.items.map((v, i) => `
-      <div class="vcard" data-url="https://www.youtube.com/watch?v=${encodeURIComponent(v.id)}">
-        <div class="thumb-wrap">
-          <img loading="lazy" src="${escapeHtml(v.thumbnail)}" alt="" />
-          <span class="rank">#${i + 1}</span>
-        </div>
-        <div class="meta">
-          <div class="t">${escapeHtml(v.title)}</div>
-          <div class="s">${escapeHtml(v.channel)} · ${fmtViews(v.views)} views</div>
-        </div>
-      </div>`).join("");
-  } catch (e) {
-    $("#trendGrid").innerHTML = `<div class='status'>Couldn't load trending: ${escapeHtml(e.message)}</div>`;
-  }
-}
-
-$("#regionChips").addEventListener("click", (e) => {
-  const c = e.target.closest(".chip"); if (!c) return;
-  document.querySelectorAll("#regionChips .chip").forEach(x => x.classList.remove("on"));
-  c.classList.add("on"); state.region = c.dataset.r; loadTrending();
-});
-$("#trendGrid").addEventListener("click", (e) => {
-  const card = e.target.closest(".vcard"); if (!card) return;
-  startAnalysis(card.dataset.url);
-});
-$("#urlForm").addEventListener("submit", (e) => { e.preventDefault(); startAnalysis($("#urlInput").value.trim()); });
-$("#clipLen").addEventListener("input", (e) => ($("#lenVal").textContent = e.target.value));
-$("#maxClips").addEventListener("input", (e) => ($("#maxVal").textContent = e.target.value));
-$("#analyzeBtn").addEventListener("click", () => { if (state.currentUrl) startAnalysis(state.currentUrl); else toast("Pick a video or paste a URL first."); });
-
-$("#logoFile").addEventListener("change", async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  const fd = new FormData(); fd.append("file", f);
-  try {
-    const r = await fetch("/api/logo", { method: "POST", body: fd });
-    if (!r.ok) throw new Error(await errorText(r));
-    const d = await r.json();
-    state.logoUrl = d.url; renderWatermarkPreview();
-    toast("Watermark saved. Run the analysis again to render it on new clips.");
-  } catch (err) { toast("Logo upload failed: " + err.message); }
-});
-
-// Analysis
-async function startAnalysis(url) {
-  if (!url) return;
-  state.currentUrl = url; state.clips = []; state.selected.clear(); state.jobId = null;
-  $("#urlInput").value = url;
-  $("#clipGrid").innerHTML = ""; $("#emptyState").style.display = "none";
-  $("#publishBar").style.display = "none";
-  document.getElementById("studio").scrollIntoView({ behavior: "smooth" });
-  $("#analyzeBtn").disabled = true;
-  setStages("", "queued");
-  setProgress(5, "Starting…");
-
-  const params = {
-    url,
-    clip_len: Number(document.getElementById("clipLen").value),
-    max_clips: Number(document.getElementById("maxClips").value),
-    caption_style: document.getElementById("capStyle").value,
-    auto_caption: document.getElementById("autoCap").checked,
-    logo_url: state.logoUrl
-  };
-  try {
-    const res = await fetch("/api/clips", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params)
-    });
-    if (!res.ok) throw new Error(await errorText(res));
-    const job = await res.json();
-    state.jobId = job.job_id;
-    await pollJob(job.job_id);
-  } catch (e) {
-    setProgress(0, "Could not start: " + e.message + " Is the server running?");
-  } finally {
-    $("#analyzeBtn").disabled = false;
-  }
-}
-
-async function pollJob(jobId) {
-  while (true) {
-    const r = await fetch(`/api/jobs/${jobId}`);
-    if (!r.ok) { setProgress(0, "Lost track of this job. Start it again."); return; }
-    const j = await r.json();
-    setProgress(j.progress || 0, j.message || "Working…");
-    setStages(j.stage, j.status);
-    if (j.status === "done") {
-      renderClips(j.clips);
-      setProgress(100, `Done — ${j.clips.length} clips ranked by clippability.`);
-      return;
-    }
-    if (j.status === "error") { setProgress(0, "Error: " + j.message); return; }
-    await sleep(1500);
-  }
-}
-
-function pubChips(list = []) {
-  return list.map(p => `<span class="${escapeHtml(p.status)}" title="${escapeHtml(p.detail || "")}">${escapeHtml(PLATFORM_LABEL[p.platform] || p.platform)} · ${escapeHtml(p.account_name || "account")}: ${escapeHtml(p.status)}</span>`).join("");
-}
-
-function renderClips(clips) {
-  state.clips = clips;
-  const style = document.getElementById("capStyle").value;
-  $("#clipGrid").innerHTML = clips.map((c, i) => `
-    <div class="clip" data-i="${i}" data-id="${escapeHtml(c.id)}">
-      <div class="frame">
-        ${watermarkHtml()}
-        <video muted loop playsinline preload="metadata" src="${escapeHtml(c.preview_url)}"></video>
-        <div class="score">${Math.round(c.score)} / 100</div>
-        ${c.caption ? `<div class="caption-burn">${style === "bold" ? `<span>${escapeHtml(c.caption)}</span>` : escapeHtml(c.caption)}</div>` : ""}
-      </div>
-      <div class="foot">
-        <div class="title">${escapeHtml(c.title)}</div>
-        <div class="why">${escapeHtml(c.reason)}</div>
-        <label class="sel"><input type="checkbox" class="pick" data-i="${i}" ${c.score >= 70 ? "checked" : ""} /> Publish this clip</label>
-        <div class="pub">${pubChips(c.publish)}</div>
-      </div>
-    </div>`).join("");
-  document.querySelectorAll(".clip").forEach(card => {
-    const v = card.querySelector("video");
-    const play = () => { v.currentTime = 0; v.play().catch(() => {}); };
-    const stop = () => v.pause();
-    card.addEventListener("mouseenter", play);
-    card.addEventListener("mouseleave", stop);
-    // Touch screens have no hover: tapping the frame toggles playback.
-    card.querySelector(".frame").addEventListener("click", () => (v.paused ? play() : stop()));
-  });
-  syncSelection();
-  $("#publishBar").style.display = "block";
-}
-
-function syncSelection() {
-  const picks = [...document.querySelectorAll(".pick:checked")].map(p => Number(p.dataset.i));
-  $("#selCount").textContent = `${picks.length} clip${picks.length === 1 ? "" : "s"} selected · ${state.accountCount} account(s) connected`;
-  state.selected = new Set(picks);
-}
-$("#clipGrid").addEventListener("change", (e) => { if (e.target.classList.contains("pick")) syncSelection(); });
-
-// Publishing runs only from this click.
-$("#publishBtn").addEventListener("click", async () => {
-  const picks = [...state.selected].map(i => state.clips[i].id);
-  if (!picks.length) return toast("Select at least one clip.");
-  $("#publishBtn").disabled = true;
-  try {
-    const r = await fetch("/api/publish", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clip_ids: picks, platforms: ["youtube_shorts", "tiktok"] })
-    });
-    if (!r.ok) throw new Error(await errorText(r));
-    const d = await r.json();
-    toast(d.message || "Queued for publishing.");
-    if (d.queued) pollPublish();
-  } catch (e) { toast("Publish failed: " + e.message); }
-  finally { $("#publishBtn").disabled = false; }
-});
-
-// Refresh per-clip, per-account results until no upload is still queued.
-async function pollPublish(tries = 0) {
-  if (!state.jobId || tries > 90) return;
-  const r = await fetch(`/api/jobs/${state.jobId}`);
-  if (!r.ok) return;
-  const j = await r.json();
-  const byId = new Map(j.clips.map(c => [c.id, c]));
-  state.clips = state.clips.map(old => byId.get(old.id) || old);
-  state.clips.forEach(c => {
-    const el = document.querySelector(`.clip[data-id="${CSS.escape(c.id)}"] .pub`);
-    if (el) el.innerHTML = pubChips(c.publish);
-  });
-  const pending = state.clips.some(c => (c.publish || []).some(p => p.status === "queued"));
-  if (pending) setTimeout(() => pollPublish(tries + 1), 2000);
-  else toast("Publishing finished. See the results on each clip.");
-}
-
-// Accounts
-async function loadAccounts() {
-  try {
-    const r = await fetch("/api/accounts"); const d = await r.json();
-    const render = (list, plat) => list.length
-      ? list.map(a => `<div class="acct"><div><div class="who"><span class="dot on"></span>${escapeHtml(a.name)}</div><div class="plat">${plat}</div></div><button class="btn ghost small" data-remove="${escapeHtml(a.id)}">Remove</button></div>`).join("")
-      : `<div class="status" style="margin-bottom:12px">No accounts connected yet.</div>`;
-    $("#ytList").innerHTML = render(d.youtube, "YouTube Shorts");
-    $("#ttList").innerHTML = render(d.tiktok, "TikTok");
-    state.accountCount = d.youtube.length + d.tiktok.length;
-    syncSelection();
-  } catch {}
-}
-
-document.getElementById("accounts").addEventListener("click", async (e) => {
-  const btn = e.target.closest("[data-remove]"); if (!btn) return;
-  if (!confirm("Disconnect this account from Verticlip?")) return;
-  try {
-    const r = await fetch(`/api/accounts/${encodeURIComponent(btn.dataset.remove)}`, { method: "DELETE" });
-    if (!r.ok) throw new Error(await errorText(r));
-    loadAccounts();
-  } catch (err) { toast("Could not remove account: " + err.message); }
-});
-
-renderWatermarkPreview();
-loadTrending();
-loadAccounts();
+  // Saved progress: show the most recent job so you can jump back into it.
+  (async () => {
+    try {
+      const active = VC.getActive();
+      const { jobs } = await VC.api("/api/jobs");
+      const job = (active && jobs.find((j) => j.id === active.id)) || jobs[0];
+      if (!job) return;
+      const running = job.status === "queued" || job.status === "running";
+      const name = job.title || job.url;
+      $("#resumeTitle").textContent = running ? "Still working on your last video" : "Your last video";
+      $("#resumeText").textContent = running
+        ? `${name} — ${job.message || "working"}`
+        : job.status === "done" ? `${name} — ${job.clips.length} clips ready` : `${name} — ${job.message}`;
+      $("#resumeLink").href = `/studio?job=${encodeURIComponent(job.id)}`;
+      $("#resumeLink").textContent = running ? "Watch progress" : job.status === "done" ? "See clips" : "Open studio";
+      $("#resume").hidden = false;
+    } catch { /* offline or empty: the hero is enough */ }
+  })();
 </script>
 </body>
 </html>

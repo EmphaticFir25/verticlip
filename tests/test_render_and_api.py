@@ -199,3 +199,40 @@ def test_publish_with_unknown_clip_ids_is_rejected(db, accounts):
     r = client.post("/api/publish", json={"clip_ids": ["nope"]})
     assert r.status_code == 400
 
+
+
+# ---------- saved progress: library, delete, pages ----------
+
+def test_jobs_endpoint_lists_saved_jobs(db):
+    seed_clip("c9", "job9")
+    jobs = client.get("/api/jobs").json()["jobs"]
+    assert [j["id"] for j in jobs] == ["job9"]
+    assert jobs[0]["clips"][0]["id"] == "c9"
+
+
+def test_title_and_settings_are_saved_with_the_job(db, monkeypatch):
+    monkeypatch.setattr(server, "run_job", lambda job_id, req: None)
+    job_id = client.post("/api/clips", json={"url": "https://example.com/v", "title": "  Big stream  ",
+                                             "clip_len": 45}).json()["job_id"]
+    job = client.get(f"/api/jobs/{job_id}").json()
+    assert job["title"] == "Big stream"
+    assert job["settings"]["clip_len"] == 45
+
+
+def test_cannot_delete_a_running_job(db):
+    store.create_job("a1b2c3d4e5", status="running")
+    assert client.delete("/api/jobs/a1b2c3d4e5").status_code == 409
+    assert client.delete("/api/jobs/missing").status_code == 404
+
+
+def test_delete_finished_job(db):
+    seed_clip("c1", "a1b2c3d4e5")
+    assert client.delete("/api/jobs/a1b2c3d4e5").json() == {"ok": True}
+    assert client.get("/api/jobs/a1b2c3d4e5").status_code == 404
+
+
+def test_every_page_route_serves_html(db):
+    for route in server.PAGES:
+        r = client.get(route)
+        assert r.status_code == 200, route
+        assert "text/html" in r.headers["content-type"]

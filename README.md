@@ -18,6 +18,16 @@ These are served from `docs/` through GitHub Pages.
 
 Nothing publishes automatically. Uploads start only when you select clips and click **Publish to all connected accounts**.
 
+## Pages and saved progress
+
+- **Home** (`/`): paste a link to start.
+- **Discover** (`/discover`): recent long videos from popular creators.
+- **Studio** (`/studio`): settings, live job progress, clips, and publishing.
+- **Library** (`/library`): every past video with its clips and upload results. Delete old ones here.
+- **Accounts** (`/accounts`): connect YouTube and TikTok.
+
+Progress is saved. Jobs and clips live in SQLite, and each clip appears as soon as it renders. Your browser remembers the active job, your output settings, and which clips you ticked, so a refresh or a visit to another page does not lose anything. A progress card follows the job across pages. A job that was running when the server stopped is marked failed on the next start, because its worker is gone.
+
 ## Setup (manual)
 
 Requirements: Python 3.10+, ffmpeg on PATH, LM Studio running its local server (default `http://localhost:1234/v1`) with a chat model loaded.
@@ -65,7 +75,7 @@ The tests mock LM Studio, ffmpeg's job pipeline, and the YouTube and TikTok uplo
 
 - `server.py`: FastAPI backend (trending, analysis, rendering, OAuth, publishing)
 - `store.py`: SQLite store for jobs, clips, and publish results (`data/verticlip.db`)
-- `web/index.html`: front end
+- `web/`: front end, one HTML file per page (`index`, `discover`, `studio`, `library`, `accounts`) plus shared `glass.css`, `pages.css`, and `app.js`
 - `tests/`: pytest suite
 - `docs/`: Terms and Privacy pages for GitHub Pages
 - `assets/`: logo files

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -25,8 +26,8 @@ from urllib.parse import urlparse
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -115,11 +116,21 @@ def ff_path(path: Path) -> str:
     return path.as_posix().replace(":", r"\:")
 
 
+store.interrupt_unfinished()  # jobs a previous run left mid-flight can never finish
+
+
 # ---------- pages ----------
 
-@app.get("/", response_class=HTMLResponse)
-def index():
-    return (WEB / "index.html").read_text(encoding="utf-8")
+PAGES = {"/": "index.html", "/discover": "discover.html", "/studio": "studio.html",
+         "/library": "library.html", "/accounts": "accounts.html"}
+
+
+def _page(name: str):
+    return lambda: FileResponse(WEB / name, media_type="text/html")
+
+
+for _route, _file in PAGES.items():
+    app.add_api_route(_route, _page(_file), methods=["GET"], include_in_schema=False)
 
 
 # ---------- trending ----------
@@ -232,6 +243,7 @@ class ClipRequest(BaseModel):
     caption_style: str = "bold"
     auto_caption: bool = True
     logo_url: Optional[str] = None
+    title: str = ""   # display name for the library; the UI sends the trending video's title
 
 
 def validate_url(url: str) -> str:
@@ -251,12 +263,21 @@ def create_clips(req: ClipRequest, bg: BackgroundTasks):
         caption_style=req.caption_style if req.caption_style in CAPTION_STYLES else "bold",
         auto_caption=req.auto_caption,
         logo_url=req.logo_url,
+        title=req.title.strip()[:200],
     )
     job_id = uuid.uuid4().hex[:10]
     store.create_job(job_id, status="queued", stage="", progress=0, message="Queued",
-                     url=req.url)
+                     url=req.url, title=req.title,
+                     settings={"clip_len": req.clip_len, "max_clips": req.max_clips,
+                               "caption_style": req.caption_style, "auto_caption": req.auto_caption})
     bg.add_task(run_job, job_id, req)
     return {"job_id": job_id}
+
+
+@app.get("/api/jobs")
+def list_jobs():
+    """Every saved job, newest first, so the library can show past work."""
+    return {"jobs": store.list_jobs()}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -265,6 +286,19 @@ def job_status(job_id: str):
     if job is None:
         raise HTTPException(404, "Unknown job")
     return job
+
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: str):
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(404, "Unknown job")
+    if job.get("status") in ("queued", "running"):
+        raise HTTPException(409, "This job is still running.")
+    store.delete_job(job_id)
+    if re.fullmatch(r"[0-9a-f]{10}", job_id):  # ids are our own hex; never build a path from anything else
+        shutil.rmtree(JOBS / job_id, ignore_errors=True)
+    return {"ok": True}
 
 
 def download(url: str, out_dir: Path) -> Path:
@@ -508,12 +542,11 @@ def run_job(job_id: str, req: ClipRequest) -> None:
         if not moments:
             raise RuntimeError("The model found no clippable moments.")
 
-        clips = []
         for i, m in enumerate(moments, 1):
             store.update_job(job_id, stage="render", progress=55 + int(40 * i / len(moments)),
                              message=f"Rendering clip {i} of {len(moments)}…")
-            clips.append(render_clip(source, job_dir, i, m, words, req))
-        store.add_clips(job_id, clips)
+            # Saved one by one so a refresh mid-render already shows the finished clips.
+            store.add_clips(job_id, [render_clip(source, job_dir, i, m, words, req)])
         store.update_job(job_id, status="done", stage="done", progress=100, message="Done")
     except Exception as exc:  # surface any failure to the UI
         store.update_job(job_id, status="error", message=str(exc))
@@ -554,7 +587,7 @@ def youtube_start():
 
 
 @app.get("/auth/youtube/callback")
-def youtube_callback(request: Request, state: str, code: str):
+def youtube_callback(state: str, code: str):
     from googleapiclient.discovery import build
     flow = YT_PENDING.pop(state, None)
     if flow is None:
@@ -570,7 +603,7 @@ def youtube_callback(request: Request, state: str, code: str):
     }
     data["youtube"] = [a for a in data["youtube"] if a["id"] != me["id"]] + [entry]
     save_accounts(data)
-    return RedirectResponse("/#accounts")
+    return RedirectResponse("/accounts")
 
 
 @app.get("/auth/tiktok/start")
@@ -609,7 +642,7 @@ def tiktok_callback(code: str, state: str):
     }
     data["tiktok"] = [a for a in data["tiktok"] if a["id"] != user["open_id"]] + [entry]
     save_accounts(data)
-    return RedirectResponse("/#accounts")
+    return RedirectResponse("/accounts")
 
 
 # ---------- publishing ----------

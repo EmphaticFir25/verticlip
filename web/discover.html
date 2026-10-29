@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Discover — Verticlip</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='9' y='2' width='14' height='28' rx='5' fill='none' stroke='%234fe3c8' stroke-width='3'/%3E%3Cpath d='M14 11l6 5-6 5z' fill='%23ff7a59'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/glass.css" />
+<link rel="stylesheet" href="/static/pages.css" />
+</head>
+<body data-page="discover">
+<main class="wrap">
+  <header class="page-head">
+    <h1>What's worth clipping this week</h1>
+    <p>Recent long streams and uploads from 20 big creators, most viewed first. Pick one and Verticlip starts finding clips.</p>
+  </header>
+  <div class="grid" id="trendGrid" aria-live="polite"></div>
+</main>
+
+<script src="/static/app.js"></script>
+<script>
+  const { $, esc, fmtViews } = VC;
+
+  async function loadTrending() {
+    $("#trendGrid").innerHTML = "<p class='state-line'>Loading videos…</p>";
+    try {
+      const data = await VC.api("/api/trending?limit=50");
+      if (!data.items.length) {
+        $("#trendGrid").innerHTML = "<div class='empty' style='grid-column:1/-1'><h3>No recent videos found</h3><p>Try again in a few minutes, or paste a link on the home page.</p></div>";
+        return;
+      }
+      $("#trendGrid").innerHTML = data.items.map((v) => `
+        <button class="vcard glass" data-url="https://www.youtube.com/watch?v=${encodeURIComponent(v.id)}" data-title="${esc(v.title)}">
+          <img loading="lazy" src="${esc(v.thumbnail)}" alt="" />
+          <div class="meta">
+            <div class="t">${esc(v.title)}</div>
+            <div class="s">${esc(v.channel)} · ${fmtViews(v.views)} views</div>
+          </div>
+        </button>`).join("");
+    } catch (e) {
+      $("#trendGrid").innerHTML = `<div class="empty" style="grid-column:1/-1"><h3>Couldn't load videos</h3><p>${esc(e.message)}</p><button class="btn glassy" id="retry">Try again</button> <a class="btn" href="/">Paste a link instead</a></div>`;
+    }
+  }
+
+  $("#trendGrid").addEventListener("click", (e) => {
+    if (e.target.closest("#retry")) return loadTrending();
+    const card = e.target.closest(".vcard");
+    if (!card) return;
+    location.href = `/studio?go=1&url=${encodeURIComponent(card.dataset.url)}&title=${encodeURIComponent(card.dataset.title)}`;
+  });
+  loadTrending();
+</script>
+</body>
+</html>

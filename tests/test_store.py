@@ -73,3 +73,32 @@ def test_data_survives_a_fresh_connection(db):
     job = store.get_job("job1")
     assert job["message"] == "Done"
     assert job["clips"][0]["publish"][0]["detail"] == "video x (private)"
+
+
+def test_jobs_list_newest_first_with_clips(db):
+    store.create_job("old", status="done")
+    store.create_job("new", status="done")
+    store.add_clips("new", [make_clip("c1", 50, job_id="new")])
+    jobs = store.list_jobs()
+    assert [j["id"] for j in jobs] == ["new", "old"]
+    assert jobs[0]["clips"][0]["id"] == "c1"
+    assert jobs[0]["created"] > 0
+
+
+def test_delete_job_removes_its_clips(db):
+    store.create_job("job1", status="done")
+    store.add_clips("job1", [make_clip("c1", 50)])
+    assert store.delete_job("job1") is True
+    assert store.get_job("job1") is None
+    assert store.get_clip("c1") is None
+    assert store.delete_job("job1") is False
+
+
+def test_interrupt_unfinished_only_touches_queued_and_running(db):
+    store.create_job("q", status="queued")
+    store.create_job("r", status="running")
+    store.create_job("d", status="done", message="Done")
+    assert store.interrupt_unfinished() == 2
+    assert store.get_job("q")["status"] == "error"
+    assert store.get_job("r")["status"] == "error"
+    assert store.get_job("d")["message"] == "Done"
