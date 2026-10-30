@@ -5,7 +5,7 @@ Pipeline per job:
   1. yt-dlp downloads the source (user-supplied URL or a trending pick)
   2. Whisper adapter transcribes (word timestamps); WHISPER_URL points at it
   3. LM Studio (OpenAI-compatible, localhost) scores transcript windows for clippable moments
-  4. ffmpeg cuts each moment to 9:16, burns captions (ASS), overlays the logo and text watermark
+  4. ffmpeg cuts each moment (keeping the source's shape by default), burns captions (ASS), overlays the logo and text watermark
   5. Clips are stored; /api/publish uploads selected clips to every connected account
 
 Run:  uvicorn server:app --reload --port 33214
@@ -245,6 +245,7 @@ class ClipRequest(BaseModel):
     auto_caption: bool = True
     logo_url: Optional[str] = None
     title: str = ""   # display name for the library; the UI sends the trending video's title
+    layout: str = "original"   # "original" keeps the source's aspect ratio; "vertical" letterboxes to 9:16
 
 
 def validate_url(url: str) -> str:
@@ -436,7 +437,45 @@ def score_windows(words: list[dict], clip_len: int, max_clips: int,
     return pick_moments(candidates, clip_len, max_clips)
 
 
-def ass_for(words: list[dict], clip_start: float, clip_end: float, style: str) -> str:
+DEFAULT_SIZE = (1920, 1080)
+VERTICAL_SIZE = (1080, 1920)
+
+
+def probe_size(source: Path) -> tuple[int, int]:
+    """Width and height of the source video's first video stream (rotation applied). Falls back to 1920x1080."""
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height:stream_side_data=rotation",
+             "-of", "json", str(source)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        stream = json.loads(proc.stdout)["streams"][0]
+        w, h = int(stream["width"]), int(stream["height"])
+        rotation = abs(int(float((stream.get("side_data_list") or [{}])[0].get("rotation", 0))))
+        if rotation in (90, 270):
+            w, h = h, w
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
+    return DEFAULT_SIZE
+
+
+def output_size(source_size: tuple[int, int], layout: str) -> tuple[int, int]:
+    """Frame size of the rendered clip. "original" keeps the source's shape (made even for x264)."""
+    if layout == "vertical":
+        return VERTICAL_SIZE
+    w, h = source_size
+    return w - w % 2, h - h % 2
+
+
+def caption_margin_v(w: int, h: int) -> int:
+    """Caption distance from the bottom: high on tall frames, near the bottom edge on wide ones."""
+    return 380 if h > w else round(h * 0.08)
+
+
+def ass_for(words: list[dict], clip_start: float, clip_end: float, style: str,
+            size: tuple[int, int] = VERTICAL_SIZE) -> str:
     """Build an ASS subtitle file with captions timed to the clip."""
     if style == "pop":
         primary, outline, box = "&H00FFFFFF", "&H00000000", 0
@@ -447,14 +486,16 @@ def ass_for(words: list[dict], clip_start: float, clip_end: float, style: str) -
     else:  # bold highlight
         primary, outline, box = "&H00000000", "&H0000B8F5", 3  # amber box
         chunk_n = 3
+    w, h = size
+    k = min(w, h) / 1080   # caption size scales with the short side so it reads the same on any frame
     header = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {w}
+PlayResY: {h}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Cap,Arial Black,72,{primary},&H000000FF,{outline},&H64000000,1,0,{box},6,0,2,60,60,380
+Style: Cap,Arial Black,{round(72 * k)},{primary},&H000000FF,{outline},&H64000000,1,0,{box},{max(1, round(6 * k))},0,2,{round(60 * k)},{round(60 * k)},{caption_margin_v(w, h)}
 
 [Events]
 Format: Layer, Start, End, Style, Text
@@ -478,22 +519,30 @@ Format: Layer, Start, End, Style, Text
     return header + "\n".join(lines) + "\n"
 
 
-def build_filters(logo_path: Optional[Path], font: Optional[Path]) -> tuple[list[str], str]:
-    """filter_complex chain: 9:16 letterbox (whole frame kept, black bars), logo top-right, text watermark, captions.
+def build_filters(logo_path: Optional[Path], font: Optional[Path],
+                  size: tuple[int, int] = VERTICAL_SIZE, layout: str = "vertical") -> tuple[list[str], str]:
+    """filter_complex chain: frame (original shape or 9:16 letterbox), logo top-right, text watermark.
     Returns the filter parts and the final video label."""
-    filters = ["[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1[v0]"]
+    w, h = size
+    k = min(w, h) / 1080   # logo and watermark scale with the short side
+    if layout == "vertical":
+        base = f"[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[v0]"
+    else:
+        base = f"[0:v]scale={w}:{h},setsar=1[v0]"
+    filters = [base]
     last = "[v0]"
+    margin, logo_w = round(40 * k), round(170 * k)
     if logo_path:
-        filters.append("[1:v]scale=170:-1[lg]")
-        filters.append(f"{last}[lg]overlay=W-w-40:40[v1]")
+        filters.append(f"[1:v]scale={logo_w}:-1[lg]")
+        filters.append(f"{last}[lg]overlay=W-w-{margin}:{margin}[v1]")
         last = "[v1]"
     if font:
         # Beside the logo when there is one (vertically centred on it), otherwise top-right alone.
-        x = "W-text_w-230" if logo_path else "W-text_w-40"
-        y = "40+(170-text_h)/2" if logo_path else "40"
+        x = f"W-text_w-{margin + logo_w + round(20 * k)}" if logo_path else f"W-text_w-{margin}"
+        y = f"{margin}+({logo_w}-text_h)/2" if logo_path else f"{margin}"
         filters.append(
-            f"{last}drawtext=fontfile='{ff_path(font)}':text=Verticlip:fontsize=44"
-            f":fontcolor=white:borderw=4:bordercolor=black@0.8:x={x}:y={y}[vt]"
+            f"{last}drawtext=fontfile='{ff_path(font)}':text=Verticlip:fontsize={round(44 * k)}"
+            f":fontcolor=white:borderw={max(1, round(4 * k))}:bordercolor=black@0.8:x={x}:y={y}[vt]"
         )
         last = "[vt]"
     return filters, last
@@ -501,7 +550,7 @@ def build_filters(logo_path: Optional[Path], font: Optional[Path]) -> tuple[list
 
 def render_clip(source: Path, job_dir: Path, idx: int, moment: dict, words: list[dict],
                 req: ClipRequest) -> dict:
-    """Cut to 9:16, burn captions, overlay logo and text watermark."""
+    """Cut the clip (original shape, or a 9:16 letterbox if layout="vertical"), burn captions, overlay logo and text watermark."""
     s, e = moment["start"], moment["end"]
     out = job_dir / f"clip_{idx}.mp4"
     logo_path = None
@@ -515,9 +564,11 @@ def render_clip(source: Path, job_dir: Path, idx: int, moment: dict, words: list
     cmd = ["ffmpeg", "-y", "-ss", f"{s:.2f}", "-t", f"{e - s:.2f}", "-i", str(source)]
     if logo_path:
         cmd += ["-i", str(logo_path)]
+    layout = "vertical" if req.layout == "vertical" else "original"
+    size = output_size(probe_size(source), layout)
     if req.auto_caption:
-        (job_dir / f"cap_{idx}.ass").write_text(ass_for(words, s, e, req.caption_style), encoding="utf-8")
-    filters, last = build_filters(logo_path, font)
+        (job_dir / f"cap_{idx}.ass").write_text(ass_for(words, s, e, req.caption_style, size), encoding="utf-8")
+    filters, last = build_filters(logo_path, font, size, layout)
     if req.auto_caption:
         filters.append(f"{last}subtitles=cap_{idx}.ass[v2]")
         last = "[v2]"

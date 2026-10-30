@@ -1,6 +1,6 @@
 # Verticlip
 
-Turn long videos into vertical Shorts. Verticlip finds the most clippable moments with a local AI model, adds captions and your logo watermark, and uploads clips to every connected YouTube and TikTok account.
+Turn long videos into captioned clips (horizontal clips stay horizontal; set `"layout": "vertical"` for a 9:16 letterbox). Verticlip finds the most clippable moments with a local AI model, adds captions and your logo watermark, and uploads clips to every connected YouTube and TikTok account.
 
 ## Policy pages (for TikTok app review)
 

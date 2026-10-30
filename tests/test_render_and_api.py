@@ -236,3 +236,31 @@ def test_every_page_route_serves_html(db):
         r = client.get(route)
         assert r.status_code == 200, route
         assert "text/html" in r.headers["content-type"]
+
+
+# ---------- layout: clips keep the source's shape ----------
+
+def test_original_layout_keeps_horizontal_frame_without_padding(monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "probe_size", lambda source: (1920, 1080))
+    f = filter_arg(capture_render(monkeypatch, tmp_path, fake_font(tmp_path), None))
+    assert "scale=1920:1080" in f
+    assert "pad=" not in f and "1080:1920" not in f
+    cap = (tmp_path / "job" / "cap_1.ass").read_text(encoding="utf-8")
+    assert "PlayResX: 1920" in cap and "PlayResY: 1080" in cap
+
+
+def test_original_layout_makes_odd_sizes_even(monkeypatch):
+    assert server.output_size((1279, 719), "original") == (1278, 718)
+
+
+def test_vertical_layout_still_letterboxes(monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "probe_size", lambda source: (1920, 1080))
+    monkeypatch.setattr(server, "resolve_font", lambda: None)
+    calls = []
+    monkeypatch.setattr(server, "run_tool", lambda cmd, label, cwd=None: calls.append(cmd))
+    req = server.ClipRequest(url="https://example.com/v", layout="vertical")
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    server.render_clip(Path("src.mp4"), job_dir, 1, {"start": 0, "end": 10, "score": 70}, WORDS, req)
+    f = filter_arg(calls[0])
+    assert "pad=1080:1920" in f
