@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Library — Verticlip</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='9' y='2' width='14' height='28' rx='5' fill='none' stroke='%234fe3c8' stroke-width='3'/%3E%3Cpath d='M14 11l6 5-6 5z' fill='%23ff7a59'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/glass.css" />
+<link rel="stylesheet" href="/static/pages.css" />
+</head>
+<body data-page="library">
+<main class="wrap">
+  <header class="page-head">
+    <h1>Everything you've clipped</h1>
+    <p>Every video you've analyzed is saved here with its clips and upload results. Open one to keep working where you stopped.</p>
+  </header>
+  <div class="lib-tools">
+    <div class="seg" id="filter" role="group" aria-label="Filter videos">
+      <button data-f="all" aria-pressed="true">All</button>
+      <button data-f="running" aria-pressed="false">In progress</button>
+      <button data-f="done" aria-pressed="false">Finished</button>
+      <button data-f="error" aria-pressed="false">Failed</button>
+    </div>
+    <div class="lib-acts">
+      <button class="btn glassy danger small" id="clearFailed" hidden>Clear failed</button>
+      <a class="btn small" href="/studio?new=1">New video</a>
+    </div>
+  </div>
+  <div class="jobs" id="jobs" aria-live="polite"></div>
+</main>
+
+<script src="/static/app.js"></script>
+<script>
+  const { $, $$, esc, toast } = VC;
+  let jobs = [], filter = "all";
+
+  const group = (j) => (j.status === "queued" || j.status === "running" ? "running" : j.status);
+  const label = { running: "In progress", queued: "Queued", done: "Finished", error: "Failed" };
+
+  function draw() {
+    const failed = jobs.filter((j) => j.status === "error");
+    $("#clearFailed").hidden = failed.length === 0;
+    $("#clearFailed").textContent = `Clear ${failed.length} failed`;
+    const rows = jobs.filter((j) => filter === "all" || group(j) === filter);
+    if (!rows.length) {
+      $("#jobs").innerHTML = `<div class="empty"><h3>${jobs.length ? "Nothing in this filter" : "No videos yet"}</h3><p>${jobs.length ? "Pick another filter above." : "Paste a link in the studio and your clips will be saved here."}</p>${jobs.length ? "" : '<a class="btn" href="/studio?new=1">Open the studio</a>'}</div>`;
+      return;
+    }
+    $("#jobs").innerHTML = rows.map((j) => {
+      const top = j.clips.length ? Math.round(Math.max(...j.clips.map((c) => c.score))) : null;
+      const strip = j.clips.slice(0, 3).map((c) => `<span><video muted preload="metadata" src="${esc(c.preview_url)}#t=0.5"></video></span>`).join("")
+        || `<span></span>`;
+      const uploads = j.clips.reduce((n, c) => n + (c.publish || []).filter((p) => p.status === "uploaded").length, 0);
+      return `<article class="job-row glass">
+        <div class="strip">${strip}</div>
+        <div>
+          <h3>${esc(j.title || j.url)}</h3>
+          <div class="sub">
+            <span class="pill ${esc(j.status)}">${label[j.status] || esc(j.status)}</span>
+            <span>${j.clips.length} clip${j.clips.length === 1 ? "" : "s"}${top === null ? "" : `, best ${top}/100`}</span>
+            ${uploads ? `<span>${uploads} upload${uploads === 1 ? "" : "s"}</span>` : ""}
+            <span>${VC.timeAgo(j.created || 0)}</span>
+            ${j.status === "error" ? `<span class="err" title="${esc(j.message)}">${esc(VC.short(j.message, 110))}</span>` : ""}
+          </div>
+        </div>
+        <div class="acts">
+          <a class="btn small" href="/studio?job=${encodeURIComponent(j.id)}">${group(j) === "running" ? "Watch" : "Open"}</a>
+          ${group(j) === "running" ? "" : `<button class="btn glassy danger small" data-del="${esc(j.id)}">Delete</button>`}
+        </div>
+      </article>`;
+    }).join("");
+  }
+
+  async function load() {
+    try {
+      jobs = (await VC.api("/api/jobs")).jobs;
+      draw();
+    } catch (e) {
+      $("#jobs").innerHTML = `<div class="empty"><h3>Couldn't load your library</h3><p>${esc(e.message)}</p></div>`;
+    }
+  }
+
+  $("#filter").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    filter = b.dataset.f;
+    $$("#filter button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    draw();
+  });
+
+  $("#jobs").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-del]");
+    if (!b) return;
+    if (!confirm("Delete this video and its clips from disk? Copies already uploaded are not affected.")) return;
+    try {
+      await VC.api(`/api/jobs/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" });
+      if (VC.getActive()?.id === b.dataset.del) VC.clearActive();
+      jobs = jobs.filter((j) => j.id !== b.dataset.del);
+      draw();
+      toast("Deleted.");
+    } catch (err) { toast("Couldn't delete: " + err.message); }
+  });
+  $("#clearFailed").addEventListener("click", async () => {
+    const failed = jobs.filter((j) => j.status === "error");
+    if (!failed.length || !confirm(`Delete ${failed.length} failed video${failed.length === 1 ? "" : "s"} from disk?`)) return;
+    const results = await Promise.allSettled(failed.map((j) => VC.api(`/api/jobs/${encodeURIComponent(j.id)}`, { method: "DELETE" })));
+    const gone = new Set(failed.filter((_, i) => results[i].status === "fulfilled").map((j) => j.id));
+    if (gone.has(VC.getActive()?.id)) VC.clearActive();
+    jobs = jobs.filter((j) => !gone.has(j.id));
+    draw();
+    toast(gone.size === failed.length ? "Cleared." : `Cleared ${gone.size} of ${failed.length}.`);
+  });
+  load();
+</script>
+</body>
+</html>

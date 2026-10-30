@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Accounts — Verticlip</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='9' y='2' width='14' height='28' rx='5' fill='none' stroke='%234fe3c8' stroke-width='3'/%3E%3Cpath d='M14 11l6 5-6 5z' fill='%23ff7a59'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/glass.css" />
+<link rel="stylesheet" href="/static/pages.css" />
+</head>
+<body data-page="accounts">
+<main class="wrap">
+  <header class="page-head">
+    <h1>Where your clips go</h1>
+    <p>Connect as many channels as you like. A clip is only uploaded when you select it in the studio and click Publish.</p>
+  </header>
+  <div class="acct-grid">
+    <section class="panel glass">
+      <h3>YouTube Shorts</h3>
+      <div id="ytList"></div>
+      <a class="btn glassy small" href="/auth/youtube/start">Connect a YouTube channel</a>
+    </section>
+    <section class="panel glass">
+      <h3>TikTok</h3>
+      <div id="ttList"></div>
+      <a class="btn glassy small" href="/auth/tiktok/start">Connect a TikTok account</a>
+    </section>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+<script>
+  const { $, esc, toast } = VC;
+
+  const render = (list, platform) => list.length
+    ? list.map((a) => `<div class="acct"><div><div class="who"><span class="dot"></span>${esc(a.name)}</div><div class="plat">${platform}</div></div><button class="btn glassy small" data-remove="${esc(a.id)}">Remove</button></div>`).join("")
+    : `<p class="muted" style="margin-bottom:16px">Nothing connected yet.</p>`;
+
+  async function loadAccounts() {
+    try {
+      const d = await VC.api("/api/accounts");
+      $("#ytList").innerHTML = render(d.youtube, "YouTube Shorts");
+      $("#ttList").innerHTML = render(d.tiktok, "TikTok inbox");
+    } catch (e) {
+      toast("Couldn't load accounts: " + e.message);
+    }
+  }
+
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-remove]");
+    if (!btn) return;
+    if (!confirm("Disconnect this account from Verticlip?")) return;
+    try {
+      await VC.api(`/api/accounts/${encodeURIComponent(btn.dataset.remove)}`, { method: "DELETE" });
+      loadAccounts();
+    } catch (err) { toast("Couldn't remove the account: " + err.message); }
+  });
+  loadAccounts();
+</script>
+</body>
+</html>

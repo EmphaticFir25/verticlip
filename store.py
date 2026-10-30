@@ -47,10 +47,11 @@ def _db() -> Iterator[sqlite3.Connection]:
 
 
 def create_job(job_id: str, **fields) -> dict:
-    job = {"id": job_id, **fields}
+    now = time.time()
+    job = {"id": job_id, "created": now, **fields}
     with _db() as c:
         c.execute("INSERT INTO jobs (id, data, updated) VALUES (?, ?, ?)",
-                  (job_id, json.dumps(job), time.time()))
+                  (job_id, json.dumps(job), now))
     return job
 
 
@@ -110,3 +111,37 @@ def set_publish_result(clip_id: str, platform: str, account_id: str, **fields) -
             results.append(entry)
         entry.update(fields)
         c.execute("UPDATE clips SET data = ? WHERE id = ?", (json.dumps(clip), clip_id))
+
+
+def list_jobs(limit: int = 100) -> list[dict]:
+    """Newest first. Each job carries its clips, without the per-clip publish detail."""
+    with _db() as c:
+        jobs = []
+        for raw, updated in c.execute("SELECT data, updated FROM jobs ORDER BY updated DESC LIMIT ?", (limit,)):
+            job = json.loads(raw)
+            job.setdefault("created", updated)  # jobs saved before `created` existed
+            jobs.append(job)
+        for job in jobs:
+            job["clips"] = [json.loads(r[0]) for r in c.execute(
+                "SELECT data FROM clips WHERE job_id = ? ORDER BY score DESC", (job["id"],))]
+    return jobs
+
+
+def delete_job(job_id: str) -> bool:
+    with _db() as c:
+        c.execute("DELETE FROM clips WHERE job_id = ?", (job_id,))
+        return c.execute("DELETE FROM jobs WHERE id = ?", (job_id,)).rowcount > 0
+
+
+def interrupt_unfinished() -> int:
+    """Mark jobs left queued or running by a stopped server as errors. Their worker thread is gone."""
+    n = 0
+    with _db() as c:
+        for job_id, raw in c.execute("SELECT id, data FROM jobs").fetchall():
+            job = json.loads(raw)
+            if job.get("status") in ("queued", "running"):
+                job.update(status="error", message="Interrupted when the server stopped. Start it again.")
+                c.execute("UPDATE jobs SET data = ?, updated = ? WHERE id = ?",
+                          (json.dumps(job), time.time(), job_id))
+                n += 1
+    return n

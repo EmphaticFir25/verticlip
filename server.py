@@ -3,9 +3,9 @@ Verticlip hosted — backend.
 
 Pipeline per job:
   1. yt-dlp downloads the source (user-supplied URL or a trending pick)
-  2. faster-whisper transcribes locally (word timestamps)
+  2. Whisper adapter transcribes (word timestamps); WHISPER_URL points at it
   3. LM Studio (OpenAI-compatible, localhost) scores transcript windows for clippable moments
-  4. ffmpeg cuts each moment to 9:16, burns captions (ASS), overlays the logo and text watermark
+  4. ffmpeg cuts each moment (keeping the source's shape by default), burns captions (ASS), overlays the logo and text watermark
   5. Clips are stored; /api/publish uploads selected clips to every connected account
 
 Run:  uvicorn server:app --reload --port 33214
@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -25,8 +26,8 @@ from urllib.parse import urlparse
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -50,7 +51,8 @@ PUBLIC_BASE = os.getenv("PUBLIC_BASE", "http://localhost:33214")
 LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://localhost:1234/v1")
 LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "local-model")
 LMSTUDIO_API_KEY = os.getenv("LMSTUDIO_API_KEY", "")
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
+WHISPER_URL = os.getenv("WHISPER_URL", "http://localhost:9000/v1").rstrip("/")
+WHISPER_API_KEY = os.getenv("WHISPER_API_KEY", "")
 YOUTUBE_PRIVACY = os.getenv("YOUTUBE_PRIVACY", "private").strip().lower()
 if YOUTUBE_PRIVACY not in ("private", "unlisted", "public"):
     YOUTUBE_PRIVACY = "private"
@@ -115,11 +117,21 @@ def ff_path(path: Path) -> str:
     return path.as_posix().replace(":", r"\:")
 
 
+store.interrupt_unfinished()  # jobs a previous run left mid-flight can never finish
+
+
 # ---------- pages ----------
 
-@app.get("/", response_class=HTMLResponse)
-def index():
-    return (WEB / "index.html").read_text(encoding="utf-8")
+PAGES = {"/": "index.html", "/discover": "discover.html", "/studio": "studio.html",
+         "/library": "library.html", "/accounts": "accounts.html"}
+
+
+def _page(name: str):
+    return lambda: FileResponse(WEB / name, media_type="text/html")
+
+
+for _route, _file in PAGES.items():
+    app.add_api_route(_route, _page(_file), methods=["GET"], include_in_schema=False)
 
 
 # ---------- trending ----------
@@ -232,6 +244,8 @@ class ClipRequest(BaseModel):
     caption_style: str = "bold"
     auto_caption: bool = True
     logo_url: Optional[str] = None
+    title: str = ""   # display name for the library; the UI sends the trending video's title
+    layout: str = "original"   # "original" keeps the source's aspect ratio; "vertical" letterboxes to 9:16
 
 
 def validate_url(url: str) -> str:
@@ -251,12 +265,21 @@ def create_clips(req: ClipRequest, bg: BackgroundTasks):
         caption_style=req.caption_style if req.caption_style in CAPTION_STYLES else "bold",
         auto_caption=req.auto_caption,
         logo_url=req.logo_url,
+        title=req.title.strip()[:200],
     )
     job_id = uuid.uuid4().hex[:10]
     store.create_job(job_id, status="queued", stage="", progress=0, message="Queued",
-                     url=req.url)
+                     url=req.url, title=req.title,
+                     settings={"clip_len": req.clip_len, "max_clips": req.max_clips,
+                               "caption_style": req.caption_style, "auto_caption": req.auto_caption})
     bg.add_task(run_job, job_id, req)
     return {"job_id": job_id}
+
+
+@app.get("/api/jobs")
+def list_jobs():
+    """Every saved job, newest first, so the library can show past work."""
+    return {"jobs": store.list_jobs()}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -265,6 +288,19 @@ def job_status(job_id: str):
     if job is None:
         raise HTTPException(404, "Unknown job")
     return job
+
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: str):
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(404, "Unknown job")
+    if job.get("status") in ("queued", "running"):
+        raise HTTPException(409, "This job is still running.")
+    store.delete_job(job_id)
+    if re.fullmatch(r"[0-9a-f]{10}", job_id):  # ids are our own hex; never build a path from anything else
+        shutil.rmtree(JOBS / job_id, ignore_errors=True)
+    return {"ok": True}
 
 
 def download(url: str, out_dir: Path) -> Path:
@@ -280,15 +316,30 @@ def download(url: str, out_dir: Path) -> Path:
 
 
 def transcribe(video: Path) -> list[dict]:
-    """Local word-level transcription with faster-whisper."""
-    from faster_whisper import WhisperModel
-    model = WhisperModel(WHISPER_MODEL, device="auto", compute_type="int8")
-    segments, _ = model.transcribe(str(video), word_timestamps=True, vad_filter=True)
-    words = []
-    for seg in segments:
-        for w in seg.words or []:
-            words.append({"start": w.start, "end": w.end, "word": w.word.strip()})
-    return words
+    """Word-level transcription via the Whisper adapter (OpenAI-style endpoint, see WHISPER_URL)."""
+    wav = video.with_name(video.stem + ".whisper.wav")
+    run_tool([
+        "ffmpeg", "-y", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav),
+    ], label="ffmpeg")
+    headers = {"Authorization": f"Bearer {WHISPER_API_KEY}"} if WHISPER_API_KEY else {}
+    with wav.open("rb") as f:
+        r = httpx.post(
+            f"{WHISPER_URL}/audio/transcriptions",
+            headers=headers,
+            files={"file": (wav.name, f, "audio/wav")},
+            data={
+                "model": "whisper-1",
+                "response_format": "verbose_json",
+                "timestamp_granularities[]": "word",
+            },
+            timeout=None,
+        )
+    if r.status_code != 200:
+        raise RuntimeError(f"Whisper adapter HTTP {r.status_code}: {r.text[:300]}")
+    return [
+        {"start": w["start"], "end": w["end"], "word": w["word"]}
+        for w in r.json().get("words", [])
+    ]
 
 
 def parse_clips(content: str) -> list[dict]:
@@ -386,7 +437,45 @@ def score_windows(words: list[dict], clip_len: int, max_clips: int,
     return pick_moments(candidates, clip_len, max_clips)
 
 
-def ass_for(words: list[dict], clip_start: float, clip_end: float, style: str) -> str:
+DEFAULT_SIZE = (1920, 1080)
+VERTICAL_SIZE = (1080, 1920)
+
+
+def probe_size(source: Path) -> tuple[int, int]:
+    """Width and height of the source video's first video stream (rotation applied). Falls back to 1920x1080."""
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height:stream_side_data=rotation",
+             "-of", "json", str(source)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        stream = json.loads(proc.stdout)["streams"][0]
+        w, h = int(stream["width"]), int(stream["height"])
+        rotation = abs(int(float((stream.get("side_data_list") or [{}])[0].get("rotation", 0))))
+        if rotation in (90, 270):
+            w, h = h, w
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
+    return DEFAULT_SIZE
+
+
+def output_size(source_size: tuple[int, int], layout: str) -> tuple[int, int]:
+    """Frame size of the rendered clip. "original" keeps the source's shape (made even for x264)."""
+    if layout == "vertical":
+        return VERTICAL_SIZE
+    w, h = source_size
+    return w - w % 2, h - h % 2
+
+
+def caption_margin_v(w: int, h: int) -> int:
+    """Caption distance from the bottom: high on tall frames, near the bottom edge on wide ones."""
+    return 380 if h > w else round(h * 0.08)
+
+
+def ass_for(words: list[dict], clip_start: float, clip_end: float, style: str,
+            size: tuple[int, int] = VERTICAL_SIZE) -> str:
     """Build an ASS subtitle file with captions timed to the clip."""
     if style == "pop":
         primary, outline, box = "&H00FFFFFF", "&H00000000", 0
@@ -397,14 +486,16 @@ def ass_for(words: list[dict], clip_start: float, clip_end: float, style: str) -
     else:  # bold highlight
         primary, outline, box = "&H00000000", "&H0000B8F5", 3  # amber box
         chunk_n = 3
+    w, h = size
+    k = min(w, h) / 1080   # caption size scales with the short side so it reads the same on any frame
     header = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {w}
+PlayResY: {h}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Cap,Arial Black,72,{primary},&H000000FF,{outline},&H64000000,1,0,{box},6,0,2,60,60,380
+Style: Cap,Arial Black,{round(72 * k)},{primary},&H000000FF,{outline},&H64000000,1,0,{box},{max(1, round(6 * k))},0,2,{round(60 * k)},{round(60 * k)},{caption_margin_v(w, h)}
 
 [Events]
 Format: Layer, Start, End, Style, Text
@@ -428,22 +519,30 @@ Format: Layer, Start, End, Style, Text
     return header + "\n".join(lines) + "\n"
 
 
-def build_filters(logo_path: Optional[Path], font: Optional[Path]) -> tuple[list[str], str]:
-    """filter_complex chain: 9:16 crop, logo top-right, text watermark, captions.
+def build_filters(logo_path: Optional[Path], font: Optional[Path],
+                  size: tuple[int, int] = VERTICAL_SIZE, layout: str = "vertical") -> tuple[list[str], str]:
+    """filter_complex chain: frame (original shape or 9:16 letterbox), logo top-right, text watermark.
     Returns the filter parts and the final video label."""
-    filters = ["[0:v]scale=-2:1920,crop=1080:1920,setsar=1[v0]"]
+    w, h = size
+    k = min(w, h) / 1080   # logo and watermark scale with the short side
+    if layout == "vertical":
+        base = f"[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[v0]"
+    else:
+        base = f"[0:v]scale={w}:{h},setsar=1[v0]"
+    filters = [base]
     last = "[v0]"
+    margin, logo_w = round(40 * k), round(170 * k)
     if logo_path:
-        filters.append("[1:v]scale=170:-1[lg]")
-        filters.append(f"{last}[lg]overlay=W-w-40:40[v1]")
+        filters.append(f"[1:v]scale={logo_w}:-1[lg]")
+        filters.append(f"{last}[lg]overlay=W-w-{margin}:{margin}[v1]")
         last = "[v1]"
     if font:
         # Beside the logo when there is one (vertically centred on it), otherwise top-right alone.
-        x = "W-text_w-230" if logo_path else "W-text_w-40"
-        y = "40+(170-text_h)/2" if logo_path else "40"
+        x = f"W-text_w-{margin + logo_w + round(20 * k)}" if logo_path else f"W-text_w-{margin}"
+        y = f"{margin}+({logo_w}-text_h)/2" if logo_path else f"{margin}"
         filters.append(
-            f"{last}drawtext=fontfile='{ff_path(font)}':text=Verticlip:fontsize=44"
-            f":fontcolor=white:borderw=4:bordercolor=black@0.8:x={x}:y={y}[vt]"
+            f"{last}drawtext=fontfile='{ff_path(font)}':text=Verticlip:fontsize={round(44 * k)}"
+            f":fontcolor=white:borderw={max(1, round(4 * k))}:bordercolor=black@0.8:x={x}:y={y}[vt]"
         )
         last = "[vt]"
     return filters, last
@@ -451,7 +550,7 @@ def build_filters(logo_path: Optional[Path], font: Optional[Path]) -> tuple[list
 
 def render_clip(source: Path, job_dir: Path, idx: int, moment: dict, words: list[dict],
                 req: ClipRequest) -> dict:
-    """Cut to 9:16, burn captions, overlay logo and text watermark."""
+    """Cut the clip (original shape, or a 9:16 letterbox if layout="vertical"), burn captions, overlay logo and text watermark."""
     s, e = moment["start"], moment["end"]
     out = job_dir / f"clip_{idx}.mp4"
     logo_path = None
@@ -465,9 +564,11 @@ def render_clip(source: Path, job_dir: Path, idx: int, moment: dict, words: list
     cmd = ["ffmpeg", "-y", "-ss", f"{s:.2f}", "-t", f"{e - s:.2f}", "-i", str(source)]
     if logo_path:
         cmd += ["-i", str(logo_path)]
+    layout = "vertical" if req.layout == "vertical" else "original"
+    size = output_size(probe_size(source), layout)
     if req.auto_caption:
-        (job_dir / f"cap_{idx}.ass").write_text(ass_for(words, s, e, req.caption_style), encoding="utf-8")
-    filters, last = build_filters(logo_path, font)
+        (job_dir / f"cap_{idx}.ass").write_text(ass_for(words, s, e, req.caption_style, size), encoding="utf-8")
+    filters, last = build_filters(logo_path, font, size, layout)
     if req.auto_caption:
         filters.append(f"{last}subtitles=cap_{idx}.ass[v2]")
         last = "[v2]"
@@ -499,7 +600,7 @@ def run_job(job_id: str, req: ClipRequest) -> None:
         source = download(req.url, job_dir)
 
         store.update_job(job_id, stage="transcribe", progress=30,
-                         message="Transcribing locally (Whisper)…")
+                         message="Transcribing (Whisper adapter)…")
         words = transcribe(source)
 
         store.update_job(job_id, stage="score", progress=55,
@@ -508,12 +609,11 @@ def run_job(job_id: str, req: ClipRequest) -> None:
         if not moments:
             raise RuntimeError("The model found no clippable moments.")
 
-        clips = []
         for i, m in enumerate(moments, 1):
             store.update_job(job_id, stage="render", progress=55 + int(40 * i / len(moments)),
                              message=f"Rendering clip {i} of {len(moments)}…")
-            clips.append(render_clip(source, job_dir, i, m, words, req))
-        store.add_clips(job_id, clips)
+            # Saved one by one so a refresh mid-render already shows the finished clips.
+            store.add_clips(job_id, [render_clip(source, job_dir, i, m, words, req)])
         store.update_job(job_id, status="done", stage="done", progress=100, message="Done")
     except Exception as exc:  # surface any failure to the UI
         store.update_job(job_id, status="error", message=str(exc))
@@ -554,7 +654,7 @@ def youtube_start():
 
 
 @app.get("/auth/youtube/callback")
-def youtube_callback(request: Request, state: str, code: str):
+def youtube_callback(state: str, code: str):
     from googleapiclient.discovery import build
     flow = YT_PENDING.pop(state, None)
     if flow is None:
@@ -570,7 +670,7 @@ def youtube_callback(request: Request, state: str, code: str):
     }
     data["youtube"] = [a for a in data["youtube"] if a["id"] != me["id"]] + [entry]
     save_accounts(data)
-    return RedirectResponse("/#accounts")
+    return RedirectResponse("/accounts")
 
 
 @app.get("/auth/tiktok/start")
@@ -609,7 +709,7 @@ def tiktok_callback(code: str, state: str):
     }
     data["tiktok"] = [a for a in data["tiktok"] if a["id"] != user["open_id"]] + [entry]
     save_accounts(data)
-    return RedirectResponse("/#accounts")
+    return RedirectResponse("/accounts")
 
 
 # ---------- publishing ----------

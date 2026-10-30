@@ -51,3 +51,10 @@ def test_empty_window_has_header_only():
     ass = ass_for(WORDS, 50, 60, "bold")
     assert dialogue(ass) == []
     assert "[Events]" in ass
+
+
+def test_header_matches_a_horizontal_frame():
+    ass = ass_for(WORDS, 0, 10, "bold", (1920, 1080))
+    assert "PlayResX: 1920" in ass and "PlayResY: 1080" in ass
+    # short side is 1080, so the font keeps its size; captions sit near the bottom, not 380px up
+    assert "Arial Black,72," in ass and ",2,60,60,86" in ass

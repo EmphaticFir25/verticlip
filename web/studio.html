@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Studio — Verticlip</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='9' y='2' width='14' height='28' rx='5' fill='none' stroke='%234fe3c8' stroke-width='3'/%3E%3Cpath d='M14 11l6 5-6 5z' fill='%23ff7a59'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/glass.css" />
+<link rel="stylesheet" href="/static/pages.css" />
+</head>
+<body data-page="studio">
+<main class="wrap">
+  <header class="page-head">
+    <h1>Studio</h1>
+    <p>Set the look, start a video, then pick the clips to publish. Progress is saved, so you can leave this page and come back.</p>
+  </header>
+
+  <div class="studio">
+    <aside class="studio-side panel glass">
+      <div class="field">
+        <label for="urlInput">Video link</label>
+        <input class="input" id="urlInput" type="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="clipLen">Clip length <output id="lenVal">30</output> s</label>
+        <input type="range" id="clipLen" min="15" max="90" value="30" />
+      </div>
+      <div class="field">
+        <label for="maxClips">Most clips <output id="maxVal">6</output></label>
+        <input type="range" id="maxClips" min="1" max="15" value="6" />
+      </div>
+      <div class="field">
+        <span class="label" id="capLabel">Caption style</span>
+        <div class="seg" id="capStyle" role="group" aria-labelledby="capLabel">
+          <button data-v="bold" aria-pressed="true">Bold box</button>
+          <button data-v="clean" aria-pressed="false">Clean</button>
+          <button data-v="pop" aria-pressed="false">Word pop</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="logoFile">Watermark logo (optional)</label>
+        <input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp" />
+        <div class="wm-preview" id="wmPreview" style="margin-top:12px" aria-label="Watermark position preview"></div>
+      </div>
+      <div class="field toggle">
+        <label for="autoCap">Burn captions into every clip</label>
+        <input type="checkbox" id="autoCap" checked />
+      </div>
+      <button class="btn" id="startBtn" style="width:100%">Find clips</button>
+    </aside>
+
+    <section>
+      <div class="job-card glass" id="jobCard" hidden>
+        <div class="job-top">
+          <div>
+            <h2 id="jobTitle"></h2>
+            <div class="src" id="jobSrc"></div>
+          </div>
+          <div class="job-acts">
+            <span class="pill" id="jobPill"></span>
+            <a class="btn glassy small" href="/studio?new=1">New video</a>
+          </div>
+        </div>
+        <div class="meter"><div id="bar"></div></div>
+        <div class="status-line" id="status"></div>
+        <ol class="stages" id="stages">
+          <li data-stage="download">Download</li>
+          <li data-stage="transcribe">Transcribe</li>
+          <li data-stage="score">Score</li>
+          <li data-stage="render">Render</li>
+        </ol>
+      </div>
+
+      <div class="empty" id="emptyState">
+        <h3>No video yet</h3>
+        <p>Paste a link on the left, or pick something from Discover.</p>
+        <a class="btn glassy" href="/discover">Browse Discover</a>
+      </div>
+      <div class="clips" id="clipGrid"></div>
+
+      <div class="publish-bar glass" id="publishBar" hidden>
+        <span id="selCount" class="muted"></span>
+        <button class="btn" id="publishBtn">Publish selected clips</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+<script>
+  const { $, $$, esc, toast } = VC;
+  const STAGES = ["download", "transcribe", "score", "render"];
+  const PLATFORM = { youtube_shorts: "YouTube", tiktok: "TikTok" };
+  const STATUS_LABEL = { queued: "Queued", running: "Working", done: "Finished", error: "Failed" };
+
+  const s = {
+    jobId: null, stop: null, clips: [], title: "", accounts: 0,
+    settings: VC.getSettings(), sig: "",
+  };
+  const params = new URLSearchParams(location.search);
+
+  // ---------- settings (saved in this browser) ----------
+  function applySettings() {
+    const v = s.settings;
+    $("#clipLen").value = v.clip_len; $("#lenVal").textContent = v.clip_len;
+    $("#maxClips").value = v.max_clips; $("#maxVal").textContent = v.max_clips;
+    $("#autoCap").checked = v.auto_caption;
+    $$("#capStyle button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === v.caption_style)));
+    drawWatermark();
+  }
+  function saveSettings() { VC.setSettings(s.settings); }
+  function drawWatermark() {
+    const logo = s.settings.logo_url ? `<img src="${esc(s.settings.logo_url)}" alt="" />` : "";
+    $("#wmPreview").innerHTML = `<div class="wm">${logo}<span>Verticlip</span></div>`;
+  }
+
+  $("#clipLen").addEventListener("input", (e) => { s.settings.clip_len = Number(e.target.value); $("#lenVal").textContent = e.target.value; saveSettings(); });
+  $("#maxClips").addEventListener("input", (e) => { s.settings.max_clips = Number(e.target.value); $("#maxVal").textContent = e.target.value; saveSettings(); });
+  $("#autoCap").addEventListener("change", (e) => { s.settings.auto_caption = e.target.checked; saveSettings(); });
+  $("#capStyle").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    s.settings.caption_style = b.dataset.v; saveSettings();
+    $$("#capStyle button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  });
+  $("#logoFile").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const fd = new FormData(); fd.append("file", f);
+    try {
+      const d = await VC.api("/api/logo", { method: "POST", body: fd });
+      s.settings.logo_url = d.url; saveSettings(); drawWatermark();
+      toast("Logo saved. It appears on clips from your next run.");
+    } catch (err) { toast("Couldn't upload the logo: " + err.message); }
+  });
+
+  // ---------- job display ----------
+  function renderStages(stage, status) {
+    const cur = STAGES.indexOf(stage);
+    $$("#stages li").forEach((li, i) => {
+      if (status === "done" || i < cur) li.className = "done";
+      else if (i === cur) li.className = status === "error" ? "error" : "active";
+      else li.className = "";
+    });
+  }
+
+  function renderJob(job) {
+    $("#jobCard").hidden = false;
+    $("#emptyState").hidden = true;
+    $("#jobTitle").textContent = job.title || "Your video";
+    $("#jobSrc").textContent = job.url || "";
+    const pill = $("#jobPill");
+    pill.className = "pill " + job.status;
+    pill.textContent = STATUS_LABEL[job.status] || job.status;
+    $("#bar").style.width = (job.status === "done" ? 100 : Number(job.progress) || 0) + "%";
+    $("#status").textContent = job.status === "done"
+      ? `${job.clips.length} clip${job.clips.length === 1 ? "" : "s"} ranked by how clippable they are.`
+      : VC.short(job.message || "Working…", 220);
+    $("#status").title = job.status === "error" ? job.message : "";
+    $("#startBtn").textContent = job.status === "error" ? "Try again" : "Find clips";
+    renderStages(job.stage, job.status);
+    $("#startBtn").disabled = job.status === "queued" || job.status === "running";
+    if (job.url && !$("#urlInput").value) $("#urlInput").value = job.url;
+    drawClips(job.clips);
+  }
+
+  // ---------- clips ----------
+  function isPicked(c) {
+    const p = VC.getPicks(s.jobId) || { on: [], off: [] };
+    return p.on.includes(c.id) || (!p.off.includes(c.id) && c.score >= 70);
+  }
+  function setPicked(id, on) {
+    const p = VC.getPicks(s.jobId) || { on: [], off: [] };
+    p.on = p.on.filter((x) => x !== id); p.off = p.off.filter((x) => x !== id);
+    (on ? p.on : p.off).push(id);
+    VC.setPicks(s.jobId, p);
+  }
+  const pubChips = (list = []) => list.map((p) =>
+    `<span class="pill ${esc(p.status)}" title="${esc(p.detail || "")}">${esc(PLATFORM[p.platform] || p.platform)}: ${esc(p.account_name || "account")}, ${esc(p.status)}</span>`).join("");
+
+  function drawClips(clips) {
+    // Redraw only when something visible changed, so playing previews are not interrupted by polling.
+    const sig = JSON.stringify(clips.map((c) => [c.id, (c.publish || []).map((p) => p.status)]));
+    if (sig === s.sig) return;
+    s.sig = sig; s.clips = clips;
+    $("#clipGrid").innerHTML = clips.map((c) => `
+      <article class="clip glass${isPicked(c) ? " picked" : ""}" data-id="${esc(c.id)}">
+        <div class="frame">
+          <video muted loop playsinline preload="metadata" src="${esc(c.preview_url)}"></video>
+          <div class="score">${Math.round(c.score)}/100</div>
+        </div>
+        <div class="foot">
+          <div class="title">${esc(c.title)}</div>
+          <div class="span">${VC.fmtClock(c.start)} to ${VC.fmtClock(c.end)} in the source</div>
+          <div class="why">${esc(c.reason)}</div>
+          <div class="row">
+            <label><input type="checkbox" class="pick" ${isPicked(c) ? "checked" : ""} /> Publish</label>
+            <a href="${esc(c.preview_url)}" download>Download</a>
+          </div>
+          <div class="pub">${pubChips(c.publish)}</div>
+        </div>
+      </article>`).join("");
+    $$(".clip").forEach((card) => {
+      const v = $("video", card);
+      const play = () => { v.currentTime = 0; v.play().catch(() => {}); };
+      card.addEventListener("mouseenter", play);
+      card.addEventListener("mouseleave", () => v.pause());
+      // Touch screens have no hover, so tapping the frame toggles playback.
+      $(".frame", card).addEventListener("click", () => (v.paused ? play() : v.pause()));
+    });
+    $("#publishBar").hidden = clips.length === 0;
+    syncCount();
+  }
+
+  function syncCount() {
+    const n = $$(".pick:checked").length;
+    $("#selCount").textContent = `${n} clip${n === 1 ? "" : "s"} selected, ${s.accounts} account${s.accounts === 1 ? "" : "s"} connected`;
+    $("#publishBtn").disabled = n === 0;
+  }
+  $("#clipGrid").addEventListener("change", (e) => {
+    if (!e.target.classList.contains("pick")) return;
+    const card = e.target.closest(".clip");
+    setPicked(card.dataset.id, e.target.checked);
+    card.classList.toggle("picked", e.target.checked);
+    syncCount();
+  });
+
+  // Publishing starts only from this click.
+  $("#publishBtn").addEventListener("click", async () => {
+    const ids = $$(".pick:checked").map((p) => p.closest(".clip").dataset.id);
+    if (!ids.length) return toast("Select at least one clip.");
+    if (!s.accounts) return toast("Connect a YouTube or TikTok account first.");
+    $("#publishBtn").disabled = true;
+    try {
+      const d = await VC.postJson("/api/publish", { clip_ids: ids, platforms: ["youtube_shorts", "tiktok"] });
+      toast(d.message || "Queued for publishing.");
+      if (d.queued) refreshPublish();
+    } catch (e) { toast("Couldn't publish: " + e.message); }
+    finally { syncCount(); }
+  });
+
+  // Refresh upload results until nothing is still queued.
+  async function refreshPublish(tries = 0) {
+    if (!s.jobId || tries > 90) return;
+    try {
+      const j = await VC.api(`/api/jobs/${encodeURIComponent(s.jobId)}`);
+      drawClips(j.clips);
+      if (j.clips.some((c) => (c.publish || []).some((p) => p.status === "queued"))) {
+        setTimeout(() => refreshPublish(tries + 1), 2000);
+      } else toast("Publishing finished. Results are on each clip.");
+    } catch { /* try again on the next click */ }
+  }
+
+  // ---------- starting and resuming ----------
+  function follow(jobId) {
+    if (s.stop) s.stop();
+    s.jobId = jobId; s.sig = "";
+    history.replaceState(null, "", `/studio?job=${encodeURIComponent(jobId)}`);
+    let wasRunning = false;
+    s.stop = VC.watchJob(jobId, (job) => {
+      const running = job.status === "queued" || job.status === "running";
+      if (running) wasRunning = true;
+      VC.setActive(job);
+      renderJob(job);
+      if (!running && wasRunning) toast(job.status === "done" ? "Clips are ready." : "The job stopped. See the message above.");
+    }, () => {
+      VC.clearActive();
+      s.jobId = null;
+      $("#jobCard").hidden = true; $("#clipGrid").innerHTML = ""; $("#publishBar").hidden = true; $("#emptyState").hidden = false;
+      toast("That video was deleted.");
+    });
+  }
+
+  async function start(url, title) {
+    if (!url) return toast("Paste a video link first.");
+    $("#startBtn").disabled = true;
+    $("#emptyState").hidden = true;
+    try {
+      const { job_id } = await VC.postJson("/api/clips", {
+        url, title: title || "", clip_len: s.settings.clip_len, max_clips: s.settings.max_clips,
+        caption_style: s.settings.caption_style, auto_caption: s.settings.auto_caption, logo_url: s.settings.logo_url,
+      });
+      $("#clipGrid").innerHTML = ""; $("#publishBar").hidden = true;
+      follow(job_id);
+    } catch (e) {
+      $("#startBtn").disabled = false;
+      $("#emptyState").hidden = false;
+      toast("Couldn't start: " + e.message);
+    }
+  }
+  $("#startBtn").addEventListener("click", () => start($("#urlInput").value.trim(), s.title));
+  $("#urlInput").addEventListener("keydown", (e) => { if (e.key === "Enter") start($("#urlInput").value.trim(), s.title); });
+  $("#urlInput").addEventListener("input", () => { s.title = ""; });
+
+  async function loadAccounts() {
+    try {
+      const d = await VC.api("/api/accounts");
+      s.accounts = d.youtube.length + d.tiktok.length;
+      syncCount();
+    } catch { /* the count stays at 0 */ }
+  }
+
+  applySettings();
+  loadAccounts();
+  (function init() {
+    const url = params.get("url"), title = params.get("title") || "";
+    const job = params.get("job") || (!url && !params.has("new") && VC.getActive()?.id);
+    if (job) return follow(job);
+    if (url) {
+      $("#urlInput").value = url; s.title = title;
+      history.replaceState(null, "", "/studio");   // a reload must not start the same video twice
+      if (params.get("go") === "1") start(url, title);
+    }
+  })();
+</script>
+</body>
+</html>
