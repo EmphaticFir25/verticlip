@@ -4,7 +4,7 @@ httpx
 pydantic
 python-multipart
 python-dotenv
-yt-dlp
+yt-dlp[default]  # [default] adds yt-dlp-ejs, the YouTube challenge solver used with a JS runtime
 faster-whisper
 av>=13,<14  # faster-whisper 1.2.x passes metadata_errors to av.open; removed in av 14
 google-api-python-client
